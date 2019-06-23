@@ -1,0 +1,20 @@
+# .gqlgen.yml example
+#
+# Refer to https://gqlgen.com/config/
+# for detailed .gqlgen.yml documentation.
+
+schema: schema.graphql
+
+models:
+  User:
+    model: github.com/nassimelhormi/ecrpe-api/models.User
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.IntID
+      - github.com/99designs/gqlgen/graphql.ID
+
+resolver:
+  filename: resolver.go
+  type: Resolver
+
+struct_tag: json

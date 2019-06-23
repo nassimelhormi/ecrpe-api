@@ -23,6 +23,8 @@ func main() {
 	/// add CORS to test with graphQL
 	/// add paths there
 
+	server.Path("POST", "/query", viewFn atreugo.View)
+	
 	if err := server.ListenAndServe(); err != nil {
 		logrus.Fatalln(err)
 	}
