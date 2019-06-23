@@ -1,25 +1,35 @@
 package main
 
 import (
-	"log"
 	"net/http"
-	"os"
+
+	"github.com/rs/cors"
+
+	"github.com/go-chi/chi"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/99designs/gqlgen/handler"
-	"github.com/nassimelhormi/ecrpe-api/apis/gqlgen"
+	"github.com/nassimelhormi/ecrpe-api/services/gqlgen"
 )
 
 const defaultPort = "8080"
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = defaultPort
-	}
+	router := chi.NewRouter()
 
+	router.Use(cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:" + defaultPort},
+		AllowCredentials: true,
+		Debug:            true,
+	}).Handler)
+
+	// [SECURITY] https://gqlgen.com/reference/complexity/
 	http.Handle("/", handler.Playground("GraphQL playground", "/query"))
 	http.Handle("/query", handler.GraphQL(gqlgen.NewExecutableSchema(gqlgen.Config{Resolvers: &gqlgen.Resolver{}})))
 
-	log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	logrus.Printf("connect to http://localhost:%s/ for GraphQL playground", defaultPort)
+	if err := http.ListenAndServe(":"+defaultPort, nil); err != nil {
+		logrus.Fatalln(err)
+	}
 }

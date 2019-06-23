@@ -6,12 +6,11 @@
 schema: schema.graphql
 
 models:
-  User:
-    model: github.com/nassimelhormi/ecrpe-api/models.User
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.IntID
-      - github.com/99designs/gqlgen/graphql.ID
+  User:
+    model: github.com/nassimelhormi/ecrpe-api/models.User
 
 resolver:
   filename: resolver.go
