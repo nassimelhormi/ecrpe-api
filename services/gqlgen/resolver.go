@@ -2,13 +2,24 @@ package gqlgen
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/nassimelhormi/ecrpe-api/models"
 )
 
 // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
-type Resolver struct{}
+var db *sql.DB
+
+func init() {
+	db, _ = sql.Open("mysql", "root:root@/ecrpe")
+	//defer db.Close()
+}
+
+type Resolver struct {
+}
 
 func (r *Resolver) Mutation() MutationResolver {
 	return &mutationResolver{r}
@@ -22,8 +33,32 @@ func (r *Resolver) User() UserResolver {
 
 type mutationResolver struct{ *Resolver }
 
-func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (bool, error) {
-	panic("not implemented")
+func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*models.User, error) {
+
+	user := &models.User{
+		Username:    input.Username,
+		PhoneNumber: *input.PhoneNumber,
+		Email:       input.Email,
+		CurrentRank: *input.CurrentRank,
+		IsTeacher:   false,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	_, err := db.Exec(
+		"INSERT INTO users (username, phone_number, email, current_rank, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		user.Username,
+		user.PhoneNumber,
+		user.Email,
+		user.CurrentRank,
+		user.IsTeacher,
+		user.CreatedAt,
+		user.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 type queryResolver struct{ *Resolver }
