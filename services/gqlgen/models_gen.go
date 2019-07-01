@@ -9,6 +9,13 @@ type NewUser struct {
 	CurrentRank *int    `json:"currentRank"`
 }
 
+type UpdatedUser struct {
+	Username    string  `json:"username"`
+	PhoneNumber *string `json:"phoneNumber"`
+	Email       *string `json:"email"`
+	CurrentRank *int    `json:"currentRank"`
+}
+
 type UserLogin struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
