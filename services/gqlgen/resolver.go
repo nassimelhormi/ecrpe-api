@@ -79,7 +79,7 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*
 		query.WriteString(", ")
 		query.WriteString(fmt.Sprintf("current_rank = %d", *input.CurrentRank))
 	}
-	query.WriteString(fmt.Sprintf(" WHERE = '%s", input.Username))
+	query.WriteString(fmt.Sprintf(" WHERE username = '%s'", input.Username))
 
 	if _, err := db.Exec(query.String()); err != nil {
 		log.Fatal(err)
