@@ -3,6 +3,8 @@ package gqlgen
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"log"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -18,8 +20,7 @@ func init() {
 	//defer db.Close()
 }
 
-type Resolver struct {
-}
+type Resolver struct{}
 
 func (r *Resolver) Mutation() MutationResolver {
 	return &mutationResolver{r}
@@ -34,7 +35,6 @@ func (r *Resolver) User() UserResolver {
 type mutationResolver struct{ *Resolver }
 
 func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*models.User, error) {
-
 	user := &models.User{
 		Username:    input.Username,
 		PhoneNumber: *input.PhoneNumber,
@@ -56,6 +56,40 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*mode
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
+	user := &models.User{}
+	query := "UPDATE users SET"
+
+	if input.PhoneNumber != nil && *input.PhoneNumber != "" {
+		query += fmt.Sprintf(" phone_number = '%s', ", *input.PhoneNumber)
+	}
+	if input.Email != nil && *input.Email != "" {
+		query += fmt.Sprintf(" email = '%s', ", *input.Email)
+	}
+	if input.CurrentRank != nil && *input.CurrentRank != 0 {
+		query += fmt.Sprintf(" current_rank = %d, ", *input.CurrentRank)
+	}
+	query += fmt.Sprintf(" username = '%[1]s' WHERE username = '%[1]s'", input.Username)
+
+	_, err := db.Exec(
+		query,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	row := db.QueryRow(
+		"SELECT id, username, phone_number, email, is_teacher FROM users WHERE username = ?",
+		input.Username,
+	)
+	errScan := row.Scan(&user.ID, &user.Username, &user.PhoneNumber, &user.Email, &user.IsTeacher)
+	if errScan != nil {
+		log.Fatal(errScan)
 	}
 
 	return user, nil
