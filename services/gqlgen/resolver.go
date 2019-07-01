@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -63,23 +64,24 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*mode
 
 func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
 	user := &models.User{}
-	query := "UPDATE users SET"
+	query := strings.Builder{}
+
+	query.WriteString("UPDATE users SET ")
 
 	if input.PhoneNumber != nil && *input.PhoneNumber != "" {
-		query += fmt.Sprintf(" phone_number = '%s', ", *input.PhoneNumber)
+		query.WriteString(fmt.Sprintf("phone_number = '%s'", *input.PhoneNumber))
 	}
 	if input.Email != nil && *input.Email != "" {
-		query += fmt.Sprintf(" email = '%s', ", *input.Email)
+		query.WriteString(", ")
+		query.WriteString(fmt.Sprintf("email = '%s'", *input.Email))
 	}
 	if input.CurrentRank != nil && *input.CurrentRank != 0 {
-		query += fmt.Sprintf(" current_rank = %d, ", *input.CurrentRank)
+		query.WriteString(", ")
+		query.WriteString(fmt.Sprintf("current_rank = %d", *input.CurrentRank))
 	}
-	query += fmt.Sprintf(" username = '%[1]s' WHERE username = '%[1]s'", input.Username)
+	query.WriteString(fmt.Sprintf(" WHERE = '%s", input.Username))
 
-	_, err := db.Exec(
-		query,
-	)
-	if err != nil {
+	if _, err := db.Exec(query.String()); err != nil {
 		log.Fatal(err)
 	}
 
@@ -87,8 +89,7 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*
 		"SELECT id, username, phone_number, email, is_teacher FROM users WHERE username = ?",
 		input.Username,
 	)
-	errScan := row.Scan(&user.ID, &user.Username, &user.PhoneNumber, &user.Email, &user.IsTeacher)
-	if errScan != nil {
+	if errScan := row.Scan(&user.ID, &user.Username, &user.PhoneNumber, &user.Email, &user.IsTeacher); errScan != nil {
 		log.Fatal(errScan)
 	}
 
