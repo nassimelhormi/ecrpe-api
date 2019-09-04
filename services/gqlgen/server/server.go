@@ -25,6 +25,7 @@ func main() {
 	}).Handler)
 
 	// [SECURITY] https://gqlgen.com/reference/complexity/
+	// [APQ] https://gqlgen.com/reference/apq/
 	http.Handle("/", handler.Playground("GraphQL playground", "/query"))
 	http.Handle("/query", handler.GraphQL(gqlgen.NewExecutableSchema(gqlgen.Config{Resolvers: &gqlgen.Resolver{}})))
 

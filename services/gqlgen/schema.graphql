@@ -5,10 +5,25 @@
 type User {
   id: ID
   username: String!
-  phoneNumber: String
   email: String!
-  currentRank: Int
   isTeacher: Boolean!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type RefresherCourse {
+  id: ID
+  year: String!
+	isFinished: Boolean!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type Session {
+  id: ID
+  title: String!
+  description: String
+  recordedOn: String
   createdAt: String!
   updatedAt: String!
 }
@@ -16,11 +31,16 @@ type User {
 type Query {
   users: [User!]!
   user(id: Int!): User!
+  myCourses(userId: Int!): [RefresherCourse!]!
+  refresherCourses(subjectId: Int): [RefresherCourse!]!
+  sessions(refresherCourseId: Int!): [Session!]!
+  myProfil(userId: Int!): User!
 }
 
 type Mutation {
   createUser(input: NewUser!): User!
   updateUser(input: UpdatedUser!): User!
+  purchaseRefresherCourse(refresherCourseId: Int!): [Session!]!
 }
 
 input UserLogin {
@@ -30,14 +50,12 @@ input UserLogin {
 
 input NewUser {
   username: String!
-  phoneNumber: String
   email: String!
-  currentRank: Int
+  password: String!
 }
 
 input UpdatedUser {
-  username: String!
-  phoneNumber: String
+  username: String
   email: String
-  currentRank: Int
+  password: String!
 }

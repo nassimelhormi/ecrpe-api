@@ -18,16 +18,24 @@ var db *sql.DB
 
 func init() {
 	db, _ = sql.Open("mysql", "root:root@/ecrpe")
-	//defer db.Close()
+	//	defer db.Close()
 }
 
-type Resolver struct{}
+type Resolver struct {
+	DB *sql.DB
+}
 
 func (r *Resolver) Mutation() MutationResolver {
 	return &mutationResolver{r}
 }
 func (r *Resolver) Query() QueryResolver {
 	return &queryResolver{r}
+}
+func (r *Resolver) RefresherCourse() RefresherCourseResolver {
+	return &refresherCourseResolver{r}
+}
+func (r *Resolver) Session() SessionResolver {
+	return &sessionResolver{r}
 }
 func (r *Resolver) User() UserResolver {
 	return &userResolver{r}
@@ -37,20 +45,16 @@ type mutationResolver struct{ *Resolver }
 
 func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*models.User, error) {
 	user := &models.User{
-		Username:    input.Username,
-		PhoneNumber: *input.PhoneNumber,
-		Email:       input.Email,
-		CurrentRank: *input.CurrentRank,
-		IsTeacher:   false,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		Username:  input.Username,
+		Email:     input.Email,
+		IsTeacher: false,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	_, err := db.Exec(
-		"INSERT INTO users (username, phone_number, email, current_rank, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO users (username, email, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
 		user.Username,
-		user.PhoneNumber,
 		user.Email,
-		user.CurrentRank,
 		user.IsTeacher,
 		user.CreatedAt,
 		user.UpdatedAt,
@@ -61,39 +65,37 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*mode
 
 	return user, nil
 }
-
 func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
 	user := &models.User{}
 	query := strings.Builder{}
 
 	query.WriteString("UPDATE users SET ")
 
-	if input.PhoneNumber != nil && *input.PhoneNumber != "" {
-		query.WriteString(fmt.Sprintf("phone_number = '%s'", *input.PhoneNumber))
-	}
 	if input.Email != nil && *input.Email != "" {
-		query.WriteString(", ")
 		query.WriteString(fmt.Sprintf("email = '%s'", *input.Email))
-	}
-	if input.CurrentRank != nil && *input.CurrentRank != 0 {
 		query.WriteString(", ")
-		query.WriteString(fmt.Sprintf("current_rank = %d", *input.CurrentRank))
 	}
-	query.WriteString(fmt.Sprintf(" WHERE username = '%s'", input.Username))
+	if input.Username != nil && *input.Username != "" {
+		query.WriteString(fmt.Sprintf("username = '%s'", *input.Username))
+	}
+	query.WriteString(fmt.Sprintf(" WHERE username = '%s'", *input.Username))
 
 	if _, err := db.Exec(query.String()); err != nil {
 		log.Fatal(err)
 	}
 
 	row := db.QueryRow(
-		"SELECT id, username, phone_number, email, is_teacher FROM users WHERE username = ?",
+		"SELECT id, username, email, is_teacher FROM users WHERE username = ?",
 		input.Username,
 	)
-	if errScan := row.Scan(&user.ID, &user.Username, &user.PhoneNumber, &user.Email, &user.IsTeacher); errScan != nil {
+	if errScan := row.Scan(&user.ID, &user.Username, &user.Email, &user.IsTeacher); errScan != nil {
 		log.Fatal(errScan)
 	}
 
 	return user, nil
+}
+func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
+	panic("not implemented")
 }
 
 type queryResolver struct{ *Resolver }
@@ -102,6 +104,39 @@ func (r *queryResolver) Users(ctx context.Context) ([]*models.User, error) {
 	panic("not implemented")
 }
 func (r *queryResolver) User(ctx context.Context, id int) (*models.User, error) {
+	panic("not implemented")
+}
+func (r *queryResolver) MyCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error) {
+	panic("not implemented")
+}
+func (r *queryResolver) RefresherCourses(ctx context.Context, subjectID *int) ([]*models.RefresherCourse, error) {
+	panic("not implemented")
+}
+func (r *queryResolver) Sessions(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
+	panic("not implemented")
+}
+func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
+	panic("not implemented")
+}
+
+type refresherCourseResolver struct{ *Resolver }
+
+func (r *refresherCourseResolver) CreatedAt(ctx context.Context, obj *models.RefresherCourse) (string, error) {
+	panic("not implemented")
+}
+func (r *refresherCourseResolver) UpdatedAt(ctx context.Context, obj *models.RefresherCourse) (string, error) {
+	panic("not implemented")
+}
+
+type sessionResolver struct{ *Resolver }
+
+func (r *sessionResolver) RecordedOn(ctx context.Context, obj *models.Session) (*string, error) {
+	panic("not implemented")
+}
+func (r *sessionResolver) CreatedAt(ctx context.Context, obj *models.Session) (string, error) {
+	panic("not implemented")
+}
+func (r *sessionResolver) UpdatedAt(ctx context.Context, obj *models.Session) (string, error) {
 	panic("not implemented")
 }
 

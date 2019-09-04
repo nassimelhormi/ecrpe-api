@@ -9,8 +9,16 @@ models:
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.IntID
+  RefresherCourse:
+    model: github.com/nassimelhormi/ecrpe-api/models.RefresherCourse
+  Session:
+    model: github.com/nassimelhormi/ecrpe-api/models.Session
+  Subject:
+    model: github.com/nassimelhormi/ecrpe-api/models.Subject
   User:
     model: github.com/nassimelhormi/ecrpe-api/models.User
+  Video:
+    model: github.com/nassimelhormi/ecrpe-api/models.Video
 
 resolver:
   filename: resolver.go

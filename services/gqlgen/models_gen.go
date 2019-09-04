@@ -3,17 +3,15 @@
 package gqlgen
 
 type NewUser struct {
-	Username    string  `json:"username"`
-	PhoneNumber *string `json:"phoneNumber"`
-	Email       string  `json:"email"`
-	CurrentRank *int    `json:"currentRank"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type UpdatedUser struct {
-	Username    string  `json:"username"`
-	PhoneNumber *string `json:"phoneNumber"`
-	Email       *string `json:"email"`
-	CurrentRank *int    `json:"currentRank"`
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+	Password string  `json:"password"`
 }
 
 type UserLogin struct {
