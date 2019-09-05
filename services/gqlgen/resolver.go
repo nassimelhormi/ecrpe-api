@@ -2,11 +2,12 @@ package gqlgen
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/nassimelhormi/ecrpe-api/models"
@@ -14,15 +15,9 @@ import (
 
 // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
-var db *sql.DB
-
-func init() {
-	db, _ = sql.Open("mysql", "root:root@/ecrpe")
-	//	defer db.Close()
-}
-
 type Resolver struct {
-	DB *sql.DB
+	DB        *sqlx.DB
+	SecreyKey string
 }
 
 func (r *Resolver) Mutation() MutationResolver {
@@ -51,13 +46,9 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*mode
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	_, err := db.Exec(
+	_, err := r.DB.Exec(
 		"INSERT INTO users (username, email, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		user.Username,
-		user.Email,
-		user.IsTeacher,
-		user.CreatedAt,
-		user.UpdatedAt,
+		user.Username, user.Email, user.IsTeacher, user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -66,9 +57,7 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*mode
 	return user, nil
 }
 func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
-	user := &models.User{}
 	query := strings.Builder{}
-
 	query.WriteString("UPDATE users SET ")
 
 	if input.Email != nil && *input.Email != "" {
@@ -80,19 +69,17 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*
 	}
 	query.WriteString(fmt.Sprintf(" WHERE username = '%s'", *input.Username))
 
-	if _, err := db.Exec(query.String()); err != nil {
+	if _, err := r.DB.Queryx(query.String()); err != nil {
 		log.Fatal(err)
 	}
 
-	row := db.QueryRow(
-		"SELECT id, username, email, is_teacher FROM users WHERE username = ?",
-		input.Username,
-	)
-	if errScan := row.Scan(&user.ID, &user.Username, &user.Email, &user.IsTeacher); errScan != nil {
-		log.Fatal(errScan)
+	user := models.User{}
+	err := r.DB.Get(&user, "SELECT id, username, email, is_teacher FROM users WHERE username = ?", input.Username)
+	if err != nil {
+		return &models.User{}, err
 	}
 
-	return user, nil
+	return &user, nil
 }
 func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
 	panic("not implemented")
@@ -101,22 +88,60 @@ func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refreshe
 type queryResolver struct{ *Resolver }
 
 func (r *queryResolver) Users(ctx context.Context) ([]*models.User, error) {
-	panic("not implemented")
+	users := make([]*models.User, 0)
+	if err := r.DB.Select(users, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users"); err != nil {
+		return users, nil
+	}
+	return users, nil
 }
 func (r *queryResolver) User(ctx context.Context, id int) (*models.User, error) {
-	panic("not implemented")
+	user := models.User{}
+	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", id); err != nil {
+		return &models.User{}, nil
+	}
+	return &user, nil
 }
 func (r *queryResolver) MyCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error) {
-	panic("not implemented")
+	refCourses := make([]*models.RefresherCourse, 0)
+	if err := r.DB.Select(refCourses, `
+		SELECT * FROM refresher_courses
+		JOIN users_refresher_courses ON refresher_courses.id = users_refresher_courses.refresher_course_id
+		JOIN users ON users_refresher_courses.user_id = ?
+	`, userID); err != nil {
+		return refCourses, err
+	}
+	return refCourses, nil
 }
 func (r *queryResolver) RefresherCourses(ctx context.Context, subjectID *int) ([]*models.RefresherCourse, error) {
-	panic("not implemented")
+	refCourses := make([]*models.RefresherCourse, 0)
+	if subjectID == nil {
+		return refCourses, nil
+	}
+	if err := r.DB.Select(refCourses, `
+		SELECT * FROM refresher_courses
+		JOIN subjects_refresher_courses ON refresher_courses.id = subjects_refresher_courses.refresher_course_id
+		JOIN subjects ON subjects_refresher_courses.subject_id = ?
+	`, subjectID); err != nil {
+		return refCourses, err
+	}
+	return refCourses, nil
 }
 func (r *queryResolver) Sessions(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
-	panic("not implemented")
+	sessions := make([]*models.Session, 0)
+	if err := r.DB.Select(sessions, `
+		SELECT id, title, description, recorded_on, created_at, updated_at FROM sessions
+		WHERE refresher_course_id = ?
+	`, refresherCourseID); err != nil {
+		return sessions, err
+	}
+	return sessions, nil
 }
 func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
-	panic("not implemented")
+	user := models.User{}
+	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", userID); err != nil {
+		return &models.User{}, err
+	}
+	return &user, nil
 }
 
 type refresherCourseResolver struct{ *Resolver }

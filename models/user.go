@@ -4,12 +4,10 @@ import "time"
 
 // User struct
 type User struct {
-	ID          int       `json:"id"`
-	Username    string    `json:"username"`
-	PhoneNumber string    `json:"phoneNumber"`
-	Email       string    `json:"email"`
-	CurrentRank int       `json:"currentRank"`
-	IsTeacher   bool      `json:"isTeacher"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID        int       `json:"id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	IsTeacher bool      `json:"is_teacher"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updateda_t"`
 }
