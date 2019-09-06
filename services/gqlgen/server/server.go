@@ -1,8 +1,9 @@
 package main
 
 import (
-	"database/sql"
 	"net/http"
+
+	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/interceptors"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -22,10 +23,12 @@ const (
 	secretKey = "secretkey"
 )
 
-var db *sql.DB
+var (
+	db *sqlx.DB
+)
 
 func init() {
-	db, err = sqlx.Open("mysql", "chermak:pwd@tcp(127.0.0.1:7359)/ecrpe")
+	db, err := sqlx.Open("mysql", "chermak:pwd@tcp(127.0.0.1:7359)/ecrpe")
 	if err != nil {
 		logrus.Fatalln(err)
 	}
@@ -37,6 +40,8 @@ func init() {
 
 func main() {
 	router := chi.NewRouter()
+
+	router.Use(interceptors.JWTCheck(secretKey))
 
 	router.Use(cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:" + defaultPort},
