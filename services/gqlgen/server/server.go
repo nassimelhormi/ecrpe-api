@@ -52,7 +52,10 @@ func main() {
 	// [SECURITY] https://gqlgen.com/reference/complexity/
 	// [APQ] https://gqlgen.com/reference/apq/
 	http.Handle("/", handler.Playground("GraphQL playground", "/query"))
-	http.Handle("/query", handler.GraphQL(gqlgen.NewExecutableSchema(gqlgen.Config{Resolvers: &gqlgen.Resolver{DB: db}})))
+	http.Handle("/query", handler.GraphQL(gqlgen.NewExecutableSchema(gqlgen.Config{Resolvers: &gqlgen.Resolver{
+		DB:        db,
+		SecreyKey: secretKey,
+	}})))
 
 	logrus.Printf("connect to http://localhost:%s/ for GraphQL playground", defaultPort)
 	if err := http.ListenAndServe(":"+defaultPort, nil); err != nil {

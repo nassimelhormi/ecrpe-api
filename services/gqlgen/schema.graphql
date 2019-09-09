@@ -3,44 +3,59 @@
 # https://gqlgen.com/getting-started/
 
 type User {
-  id: ID
+  id: ID!
   username: String!
   email: String!
   isTeacher: Boolean!
-  createdAt: String!
-  updatedAt: String!
+  createdAt: Time!
+  updatedAt: Time!
 }
 
 type RefresherCourse {
-  id: ID
+  id: ID!
   year: String!
 	isFinished: Boolean!
-  createdAt: String!
-  updatedAt: String!
+  createdAt: Time!
+  updatedAt: Time!
 }
 
 type Session {
   id: ID
-  title: String!
+  title: String
   description: String
-  recordedOn: String
-  createdAt: String!
-  updatedAt: String!
+  recordedOn: Time
+  createdAt: Time
+  updatedAt: Time
+}
+
+type Token {
+  jwt: String!
+  refreshToken: String!
 }
 
 type Query {
   users: [User!]!
   user(id: Int!): User!
+  authUser(input: UserLogin!): Token!
   myCourses(userId: Int!): [RefresherCourse!]!
   refresherCourses(subjectId: Int): [RefresherCourse!]!
   sessions(refresherCourseId: Int!): [Session!]!
   myProfil(userId: Int!): User!
+  oneUserAuth: Authorized!
 }
 
 type Mutation {
   createUser(input: NewUser!): User!
   updateUser(input: UpdatedUser!): User!
   purchaseRefresherCourse(refresherCourseId: Int!): [Session!]!
+  createSession(input: NewSession!): Authorized!
+  refreshToken: Token!
+}
+
+input NewSession {
+  title: String!
+  description: String!
+  file: Upload!
 }
 
 input UserLogin {
@@ -59,3 +74,7 @@ input UpdatedUser {
   email: String
   password: String!
 }
+
+scalar Authorized
+scalar Time
+scalar Upload

@@ -2,11 +2,14 @@ package gqlgen
 
 // import (
 // 	"context"
-// 	"database/sql"
 // 	"fmt"
 // 	"log"
 // 	"strings"
 // 	"time"
+
+// 	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/interceptors"
+
+// 	"github.com/jmoiron/sqlx"
 
 // 	_ "github.com/go-sql-driver/mysql"
 // 	"github.com/nassimelhormi/ecrpe-api/models"
@@ -14,20 +17,22 @@ package gqlgen
 
 // // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
-// var db *sql.DB
-
-// func init() {
-// 	db, _ = sql.Open("mysql", "root:root@/ecrpe")
-// 	//defer db.Close()
+// type Resolver struct {
+// 	DB        *sqlx.DB
+// 	SecreyKey string
 // }
-
-// type Resolver struct{}
 
 // func (r *Resolver) Mutation() MutationResolver {
 // 	return &mutationResolver{r}
 // }
 // func (r *Resolver) Query() QueryResolver {
 // 	return &queryResolver{r}
+// }
+// func (r *Resolver) RefresherCourse() RefresherCourseResolver {
+// 	return &refresherCourseResolver{r}
+// }
+// func (r *Resolver) Session() SessionResolver {
+// 	return &sessionResolver{r}
 // }
 // func (r *Resolver) User() UserResolver {
 // 	return &userResolver{r}
@@ -37,23 +42,15 @@ package gqlgen
 
 // func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*models.User, error) {
 // 	user := &models.User{
-// 		Username:    input.Username,
-// 		PhoneNumber: *input.PhoneNumber,
-// 		Email:       input.Email,
-// 		CurrentRank: *input.CurrentRank,
-// 		IsTeacher:   false,
-// 		CreatedAt:   time.Now(),
-// 		UpdatedAt:   time.Now(),
+// 		Username:  input.Username,
+// 		Email:     input.Email,
+// 		IsTeacher: false,
+// 		CreatedAt: time.Now(),
+// 		UpdatedAt: time.Now(),
 // 	}
-// 	_, err := db.Exec(
-// 		"INSERT INTO users (username, phone_number, email, current_rank, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-// 		user.Username,
-// 		user.PhoneNumber,
-// 		user.Email,
-// 		user.CurrentRank,
-// 		user.IsTeacher,
-// 		user.CreatedAt,
-// 		user.UpdatedAt,
+// 	_, err := r.DB.Exec(
+// 		"INSERT INTO users (username, email, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+// 		user.Username, user.Email, user.IsTeacher, user.CreatedAt, user.UpdatedAt,
 // 	)
 // 	if err != nil {
 // 		return nil, err
@@ -61,47 +58,124 @@ package gqlgen
 
 // 	return user, nil
 // }
-
 // func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
-// 	user := &models.User{}
+// 	if user := interceptors.ForContext(ctx); !user.IsAuth {
+// 		return &models.User{}, fmt.Errorf("%w", user.Error)
+// 	}
 // 	query := strings.Builder{}
-
 // 	query.WriteString("UPDATE users SET ")
 
-// 	if input.PhoneNumber != nil && *input.PhoneNumber != "" {
-// 		query.WriteString(fmt.Sprintf("phone_number = '%s'", *input.PhoneNumber))
-// 	}
 // 	if input.Email != nil && *input.Email != "" {
-// 		query.WriteString(", ")
 // 		query.WriteString(fmt.Sprintf("email = '%s'", *input.Email))
-// 	}
-// 	if input.CurrentRank != nil && *input.CurrentRank != 0 {
 // 		query.WriteString(", ")
-// 		query.WriteString(fmt.Sprintf("current_rank = %d", *input.CurrentRank))
 // 	}
-// 	query.WriteString(fmt.Sprintf(" WHERE username = '%s'", input.Username))
+// 	if input.Username != nil && *input.Username != "" {
+// 		query.WriteString(fmt.Sprintf("username = '%s'", *input.Username))
+// 	}
+// 	query.WriteString(fmt.Sprintf(" WHERE username = '%s'", *input.Username))
 
-// 	if _, err := db.Exec(query.String()); err != nil {
+// 	if _, err := r.DB.Queryx(query.String()); err != nil {
 // 		log.Fatal(err)
 // 	}
 
-// 	row := db.QueryRow(
-// 		"SELECT id, username, phone_number, email, is_teacher FROM users WHERE username = ?",
-// 		input.Username,
-// 	)
-// 	if errScan := row.Scan(&user.ID, &user.Username, &user.PhoneNumber, &user.Email, &user.IsTeacher); errScan != nil {
-// 		log.Fatal(errScan)
+// 	user := models.User{}
+// 	err := r.DB.Get(&user, "SELECT id, username, email, is_teacher FROM users WHERE username = ?", input.Username)
+// 	if err != nil {
+// 		return &models.User{}, err
 // 	}
 
-// 	return user, nil
+// 	return &user, nil
+// }
+// func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
+// 	panic("not implemented")
 // }
 
 // type queryResolver struct{ *Resolver }
 
 // func (r *queryResolver) Users(ctx context.Context) ([]*models.User, error) {
-// 	panic("not implemented")
+// 	users := make([]*models.User, 0)
+// 	if err := r.DB.Select(users, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users"); err != nil {
+// 		return users, nil
+// 	}
+// 	return users, nil
 // }
 // func (r *queryResolver) User(ctx context.Context, id int) (*models.User, error) {
+// 	user := models.User{}
+// 	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", id); err != nil {
+// 		return &models.User{}, nil
+// 	}
+// 	return &user, nil
+// }
+// func (r *queryResolver) MyCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error) {
+// 	refCourses := make([]*models.RefresherCourse, 0)
+// 	if user := interceptors.ForContext(ctx); !user.IsAuth {
+// 		return refCourses, fmt.Errorf("%w", user.Error)
+// 	}
+// 	if err := r.DB.Select(refCourses, `
+// 		SELECT * FROM refresher_courses
+// 		JOIN users_refresher_courses ON refresher_courses.id = users_refresher_courses.refresher_course_id
+// 		JOIN users ON users_refresher_courses.user_id = ?
+// 	`, userID); err != nil {
+// 		return refCourses, err
+// 	}
+// 	return refCourses, nil
+// }
+// func (r *queryResolver) RefresherCourses(ctx context.Context, subjectID *int) ([]*models.RefresherCourse, error) {
+// 	refCourses := make([]*models.RefresherCourse, 0)
+// 	if subjectID == nil {
+// 		return refCourses, nil
+// 	}
+// 	if err := r.DB.Select(refCourses, `
+// 		SELECT * FROM refresher_courses
+// 		JOIN subjects_refresher_courses ON refresher_courses.id = subjects_refresher_courses.refresher_course_id
+// 		JOIN subjects ON subjects_refresher_courses.subject_id = ?
+// 	`, subjectID); err != nil {
+// 		return refCourses, err
+// 	}
+// 	return refCourses, nil
+// }
+// func (r *queryResolver) Sessions(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
+// 	sessions := make([]*models.Session, 0)
+// 	if user := interceptors.ForContext(ctx); !user.IsAuth {
+// 		return sessions, fmt.Errorf("%w", user.Error)
+// 	}
+// 	if err := r.DB.Select(sessions, `
+// 		SELECT id, title, description, recorded_on, created_at, updated_at FROM sessions
+// 		WHERE refresher_course_id = ?
+// 	`, refresherCourseID); err != nil {
+// 		return sessions, err
+// 	}
+// 	return sessions, nil
+// }
+// func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
+// 	if user := interceptors.ForContext(ctx); !user.IsAuth {
+// 		return &models.User{}, fmt.Errorf("%w", user.Error)
+// 	}
+// 	user := models.User{}
+// 	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", userID); err != nil {
+// 		return &models.User{}, err
+// 	}
+// 	return &user, nil
+// }
+
+// type refresherCourseResolver struct{ *Resolver }
+
+// func (r *refresherCourseResolver) CreatedAt(ctx context.Context, obj *models.RefresherCourse) (string, error) {
+// 	panic("not implemented")
+// }
+// func (r *refresherCourseResolver) UpdatedAt(ctx context.Context, obj *models.RefresherCourse) (string, error) {
+// 	panic("not implemented")
+// }
+
+// type sessionResolver struct{ *Resolver }
+
+// func (r *sessionResolver) RecordedOn(ctx context.Context, obj *models.Session) (*string, error) {
+// 	panic("not implemented")
+// }
+// func (r *sessionResolver) CreatedAt(ctx context.Context, obj *models.Session) (string, error) {
+// 	panic("not implemented")
+// }
+// func (r *sessionResolver) UpdatedAt(ctx context.Context, obj *models.Session) (string, error) {
 // 	panic("not implemented")
 // }
 
