@@ -52,7 +52,7 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*mode
 	return user, nil
 }
 func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
-	if user := interceptors.ForContext(ctx); !user.IsAuth {
+	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
 		return &models.User{}, gqlerror.Errorf("%w", user.Error)
 	}
 	query := strings.Builder{}
@@ -121,16 +121,18 @@ func (r *queryResolver) AuthUser(ctx context.Context, input UserLogin) (*models.
 	}
 	tokens.JWT = string(jwt)
 	tokens.RefreshToken = utils.HexKeyGenerator(16)
+
+	userIP := interceptors.ForIPAddress(ctx)
 	if _, err := r.DB.Queryx(`
 		UPDATE user_auths SET ip_adress=?, refresh_token=?, delivered_at=?, on_login=?, user_id=?
-	`, "ipadress", tokens.RefreshToken, time.Now(), 1, user.ID); err != nil {
+	`, userIP, tokens.RefreshToken, time.Now(), 1, user.ID); err != nil {
 		return &models.Token{}, gqlerror.Errorf("token error")
 	}
 	return &tokens, nil
 }
 func (r *queryResolver) MyCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error) {
 	refCourses := make([]*models.RefresherCourse, 0)
-	if user := interceptors.ForContext(ctx); !user.IsAuth {
+	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
 		return refCourses, gqlerror.Errorf("%w", user.Error)
 	}
 	if err := r.DB.Select(refCourses, `
@@ -161,7 +163,7 @@ func (r *queryResolver) RefresherCourses(ctx context.Context, subjectID *int) ([
 }
 func (r *queryResolver) Sessions(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
 	sessions := make([]*models.Session, 0)
-	if user := interceptors.ForContext(ctx); !user.IsAuth {
+	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
 		return sessions, gqlerror.Errorf("%w", user.Error)
 	}
 	if err := r.DB.Select(sessions, `
@@ -173,7 +175,7 @@ func (r *queryResolver) Sessions(ctx context.Context, refresherCourseID int) ([]
 	return sessions, nil
 }
 func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
-	if user := interceptors.ForContext(ctx); !user.IsAuth {
+	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
 		return &models.User{}, gqlerror.Errorf("%w", user.Error)
 	}
 	user := models.User{}
@@ -183,7 +185,7 @@ func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User,
 	return &user, nil
 }
 func (r *queryResolver) OneUserAuth(ctx context.Context) (string, error) {
-	if user := interceptors.ForContext(ctx); !user.IsAuth {
+	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
 		return "", gqlerror.Errorf("%w", user.Error)
 	}
 	// redis check ip from subject jwt (username)

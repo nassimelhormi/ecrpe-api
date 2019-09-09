@@ -10,11 +10,12 @@ import (
 	"github.com/gbrlsnchs/jwt"
 )
 
-type contextKey struct {
+// JWTContextKey struct
+type JWTContextKey struct {
 	name string
 }
 
-var userJWTCtxKey = &contextKey{"userJWT"}
+var userJWTCtxKey = &JWTContextKey{"userJWT"}
 
 // User struct
 type User struct {
@@ -60,8 +61,8 @@ func JWTCheck(secretKey string) func(http.Handler) http.Handler {
 	}
 }
 
-// ForContext finds the user from the context. REQUIRES Middleware to have run.
-func ForContext(ctx context.Context) *User {
+// ForUserContext finds the user from the context. REQUIRES Middleware to have run.
+func ForUserContext(ctx context.Context) *User {
 	raw, _ := ctx.Value(userJWTCtxKey).(*User)
 	return raw
 }
