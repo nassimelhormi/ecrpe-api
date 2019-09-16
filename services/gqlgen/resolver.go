@@ -6,23 +6,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vektah/gqlparser/gqlerror"
-
-	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/utils"
-
 	"github.com/gbrlsnchs/jwt"
-
 	"github.com/jmoiron/sqlx"
 	"github.com/nassimelhormi/ecrpe-api/models"
 	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/interceptors"
+	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/redis"
+	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/utils"
+	"github.com/plutov/paypal"
+	"github.com/vektah/gqlparser/gqlerror"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 type Resolver struct {
-	DB        *sqlx.DB
-	SecreyKey string
+	DB             *sqlx.DB
+	SecreyKey      string
+	IPAddressCache *redis.Cache
+	PaypalClient   *paypal.Client
 }
 
 func (r *Resolver) Mutation() MutationResolver {
@@ -34,27 +35,62 @@ func (r *Resolver) Query() QueryResolver {
 
 type mutationResolver struct{ *Resolver }
 
-func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (*models.User, error) {
-	user := &models.User{
-		Username:  input.Username,
-		Email:     input.Email,
-		IsTeacher: false,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+func (r *mutationResolver) RefreshToken(ctx context.Context) (*models.Token, error) {
+	refreshToken := interceptors.ForRefreshToken(ctx)
+	if refreshToken == "" {
+		return &models.Token{}, gqlerror.Errorf("no refresh token")
 	}
-	_, err := r.DB.Exec(
-		"INSERT INTO users (username, email, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		user.Username, user.Email, user.IsTeacher, user.CreatedAt, user.UpdatedAt,
-	)
+	// old token
+	userAuth := models.UserAuth{}
+	if err := r.DB.Get(userAuth, `
+		SELECT u.username, ua.id, ua.user_id FROM user u, user_auths ua WHERE ua.refresh_token = ?
+	`, refreshToken); err != nil {
+		return &models.Token{}, gqlerror.Errorf("")
+	}
+	userIP := interceptors.ForIPAddress(ctx)
+	if _, err := r.DB.Queryx(`
+		UPDATE user_auths SET ip_address=?, is_revoked=?, revoked_at=?, on_refresh=? WHERE id = ?
+	`, userIP, 1, time.Now(), 1, userAuth.ID); err != nil {
+		return &models.Token{}, gqlerror.Errorf("token error")
+	}
+	// new token
+	pl := jwt.Payload{
+		Subject:        userAuth.Username,
+		Audience:       jwt.Audience{"https://ecrpe.fr"},
+		ExpirationTime: jwt.NumericDate(time.Now().Add(30 * time.Minute)),
+		IssuedAt:       jwt.NumericDate(time.Now()),
+	}
+	jwt, err := jwt.Sign(pl, jwt.NewHS256([]byte(r.SecreyKey)))
 	if err != nil {
-		return nil, gqlerror.Errorf("cannot create user")
+		return &models.Token{}, gqlerror.Errorf("error jwt")
 	}
-	return user, nil
+	tokens := models.Token{
+		JWT:          string(jwt),
+		RefreshToken: utils.HexKeyGenerator(16),
+	}
+	// push refresh token
+	if _, err = r.DB.Exec(
+		"INSERT INTO user_auths (ip_address, refresh_token, delivered_at, on_refresh, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+		userIP, tokens.RefreshToken, time.Now(), 1, userAuth.UserID,
+	); err != nil {
+		return nil, gqlerror.Errorf("refresh token not updated")
+	}
+	return &tokens, nil
+}
+func (r *mutationResolver) CreateUser(ctx context.Context, input NewUser) (string, error) {
+	user := &models.User{
+		Username: input.Username,
+		Email:    input.Email,
+	}
+	if _, err := r.DB.Exec(
+		"INSERT INTO users (username, email, is_teacher, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		user.Username, user.Email, user.IsTeacher, time.Now(), time.Now(),
+	); err != nil {
+		return "false", gqlerror.Errorf("cannot create user")
+	}
+	return "true", nil
 }
 func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error) {
-	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
-		return &models.User{}, gqlerror.Errorf("%w", user.Error)
-	}
 	query := strings.Builder{}
 	query.WriteString("UPDATE users SET ")
 	if input.Email != nil && *input.Email != "" {
@@ -75,32 +111,14 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (*
 	return &user, nil
 }
 func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
-	panic("not implemented")
-}
-func (r *mutationResolver) CreateSession(ctx context.Context, input NewSession) (string, error) {
-	panic("not implemented")
-}
-func (r *mutationResolver) RefreshToken(ctx context.Context) (*models.Token, error) {
-	panic("not implemented")
+	sessions := make([]*models.Session, 0)
+	// paypal system
+	return sessions, nil
 }
 
 type queryResolver struct{ *Resolver }
 
-func (r *queryResolver) Users(ctx context.Context) ([]*models.User, error) {
-	users := make([]*models.User, 0)
-	if err := r.DB.Select(users, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users"); err != nil {
-		return users, gqlerror.Errorf("cannot retrieve users")
-	}
-	return users, nil
-}
-func (r *queryResolver) User(ctx context.Context, id int) (*models.User, error) {
-	user := models.User{}
-	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", id); err != nil {
-		return &models.User{}, gqlerror.Errorf("cannot retrieve user")
-	}
-	return &user, nil
-}
-func (r *queryResolver) AuthUser(ctx context.Context, input UserLogin) (*models.Token, error) {
+func (r *queryResolver) Login(ctx context.Context, input UserLogin) (*models.Token, error) {
 	user := models.User{}
 	if err := r.DB.Get(&user, "SELECT id, username, encrypted_pwd FROM users WHERE email = ?", input.Email); err != nil {
 		return &models.Token{}, gqlerror.Errorf("cannot find user")
@@ -123,18 +141,41 @@ func (r *queryResolver) AuthUser(ctx context.Context, input UserLogin) (*models.
 	tokens.RefreshToken = utils.HexKeyGenerator(16)
 
 	userIP := interceptors.ForIPAddress(ctx)
-	if _, err := r.DB.Queryx(`
-		UPDATE user_auths SET ip_adress=?, refresh_token=?, delivered_at=?, on_login=?, user_id=?
-	`, userIP, tokens.RefreshToken, time.Now(), 1, user.ID); err != nil {
+	if _, err = r.DB.Exec(
+		"INSERT INTO user_auths (ip_address, refresh_token, delivered_at, on_login, user_id) VALUES (?, ?, ?, ?, ?)",
+		userIP, tokens.RefreshToken, time.Now(), 1, user.ID,
+	); err != nil {
 		return &models.Token{}, gqlerror.Errorf("token error")
 	}
 	return &tokens, nil
 }
+func (r *queryResolver) OneUserAuth(ctx context.Context) (string, error) {
+	user := interceptors.ForUserContext(ctx)
+	if !user.IsAuth {
+		return "", gqlerror.Errorf("%w", user.Error)
+	}
+	userIPAddress := interceptors.ForIPAddress(ctx)
+	userIPAddressCached, ok := r.IPAddressCache.GetIP(string(user.Username))
+	if !ok {
+		r.IPAddressCache.AddIP(string(user.Username), userIPAddress)
+		return "true", nil
+	}
+
+	if userIPAddress != userIPAddressCached {
+		return "false", gqlerror.Errorf("account sharing is not authorized")
+	}
+	r.IPAddressCache.AddIP(string(user.Username), userIPAddress)
+	return "true", nil
+}
+func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
+	user := models.User{}
+	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", userID); err != nil {
+		return &models.User{}, gqlerror.Errorf("cannot access your profil, try again")
+	}
+	return &user, nil
+}
 func (r *queryResolver) MyCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error) {
 	refCourses := make([]*models.RefresherCourse, 0)
-	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
-		return refCourses, gqlerror.Errorf("%w", user.Error)
-	}
 	if err := r.DB.Select(refCourses, `
 		SELECT * FROM refresher_courses
 		JOIN users_refresher_courses ON refresher_courses.id = users_refresher_courses.refresher_course_id
@@ -163,31 +204,11 @@ func (r *queryResolver) RefresherCourses(ctx context.Context, subjectID *int) ([
 }
 func (r *queryResolver) Sessions(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
 	sessions := make([]*models.Session, 0)
-	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
-		return sessions, gqlerror.Errorf("%w", user.Error)
-	}
 	if err := r.DB.Select(sessions, `
-		SELECT id, title, description, recorded_on, created_at, updated_at FROM sessions
-		WHERE refresher_course_id = ?
-	`, refresherCourseID); err != nil {
+			SELECT id, title, description, recorded_on, created_at, updated_at FROM sessions
+			WHERE refresher_course_id = ?
+		`, refresherCourseID); err != nil {
 		return sessions, gqlerror.Errorf("cannot retrieve sessions from this refresher course")
 	}
 	return sessions, nil
-}
-func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
-	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
-		return &models.User{}, gqlerror.Errorf("%w", user.Error)
-	}
-	user := models.User{}
-	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", userID); err != nil {
-		return &models.User{}, gqlerror.Errorf("cannot access your profil, try again")
-	}
-	return &user, nil
-}
-func (r *queryResolver) OneUserAuth(ctx context.Context) (string, error) {
-	if user := interceptors.ForUserContext(ctx); !user.IsAuth {
-		return "", gqlerror.Errorf("%w", user.Error)
-	}
-	// redis check ip from subject jwt (username)
-	return "", nil
 }

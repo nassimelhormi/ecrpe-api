@@ -2,16 +2,6 @@
 
 package gqlgen
 
-import (
-	"github.com/99designs/gqlgen/graphql"
-)
-
-type NewSession struct {
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	File        graphql.Upload `json:"file"`
-}
-
 type NewUser struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`

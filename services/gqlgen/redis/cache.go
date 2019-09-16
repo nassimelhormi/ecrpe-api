@@ -37,3 +37,15 @@ func (c *Cache) Get(ctx context.Context, hash string) (string, bool) {
 	}
 	return s, true
 }
+
+func (c *Cache) AddIP(userID string, userIP string) {
+	c.client.Set(userID, userIP, c.ttl)
+}
+
+func (c *Cache) GetIP(userID string) (string, bool) {
+	s, err := c.client.Get(userID).Result()
+	if err != nil {
+		return "", false
+	}
+	return s, true
+}

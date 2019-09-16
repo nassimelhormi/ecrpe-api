@@ -34,28 +34,19 @@ type Token {
 }
 
 type Query {
-  users: [User!]!
-  user(id: Int!): User!
-  authUser(input: UserLogin!): Token!
+  login(input: UserLogin!): Token!
+  oneUserAuth: Authorized!
+  myProfil(userId: Int!): User!
   myCourses(userId: Int!): [RefresherCourse!]!
   refresherCourses(subjectId: Int): [RefresherCourse!]!
   sessions(refresherCourseId: Int!): [Session!]!
-  myProfil(userId: Int!): User!
-  oneUserAuth: Authorized!
 }
 
 type Mutation {
-  createUser(input: NewUser!): User!
+  refreshToken: Token!
+  createUser(input: NewUser!): Authorized!
   updateUser(input: UpdatedUser!): User!
   purchaseRefresherCourse(refresherCourseId: Int!): [Session!]!
-  createSession(input: NewSession!): Authorized!
-  refreshToken: Token!
-}
-
-input NewSession {
-  title: String!
-  description: String!
-  file: Upload!
 }
 
 input UserLogin {
@@ -77,4 +68,3 @@ input UpdatedUser {
 
 scalar Authorized
 scalar Time
-scalar Upload

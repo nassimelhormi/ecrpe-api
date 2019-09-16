@@ -10,7 +10,7 @@ services:
     ports:
       - 7359:3306
     volumes:
-      - ../tools/sql/:/var/local
+      - /Users/julien/Developments/go/src/github.com/nassimelhormi/ecrpe-api/tools/sql:/var/local
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: ecrpe
