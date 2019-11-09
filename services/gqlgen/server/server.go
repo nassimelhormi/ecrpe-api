@@ -4,8 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/plutov/paypal"
-
+	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/directives"
 	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/redis"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -14,32 +13,29 @@ import (
 
 	"github.com/go-chi/chi"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/99designs/gqlgen/handler"
+	"github.com/nassimelhormi/ecrpe-api/models"
 	"github.com/nassimelhormi/ecrpe-api/services/gqlgen"
 	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/interceptors"
+	"github.com/sirupsen/logrus"
 )
 
 const (
-	defaultPort    = "8080"
-	secretKey      = "secretkey"
-	paypalClientID = "Af4joGyOARBhHtZz0LFQhZiXHdJV_Xiaih97aftQqrPCRowR9dO7WuoN9CB9ZynaJzbPn9iWlZTDHw1n"
-	paypalSecretID = "EE5erT0UHU0-kn1O3X-gW3Xrj2ddIgMy8qNvrVPZ7eOSQHOZ0YIl1fOK8xzm8dJ7hA9ZHhn5lC_7UfBj"
+	defaultPort = "8080"
+	secretKey   = "secretkey"
 )
 
 var (
-	db             *sqlx.DB
-	apqCache       *redis.Cache
-	ipAddressCache *redis.Cache
-	paypalClient   *paypal.Client
+	db              *sqlx.DB
+	apqCache        *redis.Cache
+	ipAddressCache  *redis.Cache
+	videoEncodingCh chan models.Video
 )
 
 func init() {
 	// secretKey = os.Getenv("SECRET_KET")
-	// paypalClientID = os.Getenv("PAYPAL_CLIENT_ID")
-	// paypalSecretID = os.Getenv("SECRET_CLIENT_ID")
 	// database
+	videoEncodingCh = make(chan models.Video, 3)
 	db, err := sqlx.Open("mysql", "chermak:pwd@tcp(127.0.0.1:7359)/ecrpe")
 	if err != nil {
 		logrus.Fatalf("cannot connect to mysql: %v", err)
@@ -54,10 +50,6 @@ func init() {
 	}
 	if ipAddressCache, err = redis.NewCache("localhost:6789", "", 15*time.Minute); err != nil {
 		logrus.Fatalf("cannot create IP Address redis cache: %v", err)
-	}
-	// paypal client
-	if paypalClient, err = paypal.NewClient(paypalClientID, paypalSecretID, paypal.APIBaseSandBox); err != nil {
-		logrus.Fatalf("cannot connect to paypal service: %v", err)
 	}
 }
 
@@ -79,10 +71,14 @@ func main() {
 		gqlgen.NewExecutableSchema(
 			gqlgen.Config{
 				Resolvers: &gqlgen.Resolver{
-					DB:             db,
-					SecreyKey:      secretKey,
-					IPAddressCache: ipAddressCache,
-					PaypalClient:   paypalClient,
+					// 	DB:              db,
+					// 	SecreyKey:       secretKey,
+					// 	IPAddressCache:  ipAddressCache,
+					// 	VideoEncodingCh: videoEncodingCh,
+				},
+				Directives: gqlgen.DirectiveRoot{
+					HasRole:              directives.HasRole,
+					RefresherCourseOwner: directives.RefresherCourseOwner,
 				},
 			},
 		),

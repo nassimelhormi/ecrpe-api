@@ -9,6 +9,8 @@ models:
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.IntID
+  ClassPaper:
+    model: github.com/nassimelhormi/ecrpe-api/models.ClassPaper
   RefresherCourse:
     model: github.com/nassimelhormi/ecrpe-api/models.RefresherCourse
   Session:

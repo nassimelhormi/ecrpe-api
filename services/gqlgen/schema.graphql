@@ -2,30 +2,51 @@
 #
 # https://gqlgen.com/getting-started/
 
-type User {
+type ClassPaper {
   id: ID!
-  username: String!
-  email: String!
-  isTeacher: Boolean!
-  createdAt: Time!
-  updatedAt: Time!
+  title: String
+  path: String
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
 type RefresherCourse {
   id: ID!
-  year: String!
-	isFinished: Boolean!
-  createdAt: Time!
-  updatedAt: Time!
+  year: String
+	isFinished: Boolean
+  price: Float @refresherCourseOwner(status: OWNER)
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
-type Session {
-  id: ID
+type Session @hasRole(role: USER){
+  id: ID!
   title: String
   description: String
-  recordedOn: Time
-  createdAt: Time
-  updatedAt: Time
+  recordedOn: Timestamp
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  video: Video
+  classPapers: [ClassPaper]
+}
+
+type User {
+  id: ID!
+  username: String
+  email: String
+  isTeacher: Boolean
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+type Video {
+  id: ID!
+  uuid: String
+  path: String
+  duration: String
+  isEncoded: Boolean
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
 type Token {
@@ -34,19 +55,35 @@ type Token {
 }
 
 type Query {
+  ## not logged in
   login(input: UserLogin!): Token!
-  oneUserAuth: Authorized!
-  myProfil(userId: Int!): User!
-  myCourses(userId: Int!): [RefresherCourse!]!
   refresherCourses(subjectId: Int): [RefresherCourse!]!
-  sessions(refresherCourseId: Int!): [Session!]!
+  ## logged in
+  videoUserCheck: Boolean! @hasRole(role: USER)
+  myProfil(userId: Int!): User! @hasRole(role: USER)
+  myRefrescherCourses(userId: Int!): [RefresherCourse!]! @hasRole(role: USER)
+  sessions(refresherCourseId: Int!): [Session!]! @hasRole(role: USER)
 }
 
 type Mutation {
-  refreshToken: Token!
-  createUser(input: NewUser!): Authorized!
-  updateUser(input: UpdatedUser!): User!
-  purchaseRefresherCourse(refresherCourseId: Int!): [Session!]!
+  ## not logged in
+  createUser(input: NewUser!): Boolean!
+  ## logged in as USER
+  refreshToken: Token! @hasRole(role: USER)
+  updateUser(input: UpdatedUser!): Boolean! @hasRole(role: USER)
+  purchaseRefresherCourse(refresherCourseId: Int!): [Session!]! @hasRole(role: USER)
+  ## logged in as TEACHER
+  createRefresherCourse(input: NewSessionCourse!): Boolean! @hasRole(role: TEACHER)
+}
+
+input NewSessionCourse {
+  title: String!
+  type: String!
+  description: String!
+  part: Boolean!
+  recordedOn: Timestamp!
+  videoFile: File!
+  pdfFiles: [File]
 }
 
 input UserLogin {
@@ -66,5 +103,13 @@ input UpdatedUser {
   password: String!
 }
 
-scalar Authorized
-scalar Time
+scalar Timestamp
+scalar File
+
+directive @hasRole(role: Role!) on OBJECT | QUERY | MUTATION
+directive @refresherCourseOwner on FIELD_DEFINITION
+
+enum Role {
+  TEACHER
+  USER
+}

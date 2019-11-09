@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/introspection"
@@ -36,15 +36,32 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	ClassPaper() ClassPaperResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
+	RefresherCourse() RefresherCourseResolver
+	Session() SessionResolver
+	User() UserResolver
+	Video() VideoResolver
 }
 
 type DirectiveRoot struct {
+	HasRole func(ctx context.Context, obj interface{}, next graphql.Resolver, role Role) (res interface{}, err error)
+
+	RefresherCourseOwner func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error)
 }
 
 type ComplexityRoot struct {
+	ClassPaper struct {
+		CreatedAt func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Path      func(childComplexity int) int
+		Title     func(childComplexity int) int
+		UpdatedAt func(childComplexity int) int
+	}
+
 	Mutation struct {
+		CreateRefresherCourse   func(childComplexity int, input NewSessionCourse) int
 		CreateUser              func(childComplexity int, input NewUser) int
 		PurchaseRefresherCourse func(childComplexity int, refresherCourseID int) int
 		RefreshToken            func(childComplexity int) int
@@ -52,29 +69,32 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		Login            func(childComplexity int, input UserLogin) int
-		MyCourses        func(childComplexity int, userID int) int
-		MyProfil         func(childComplexity int, userID int) int
-		OneUserAuth      func(childComplexity int) int
-		RefresherCourses func(childComplexity int, subjectID *int) int
-		Sessions         func(childComplexity int, refresherCourseID int) int
+		Login               func(childComplexity int, input UserLogin) int
+		MyProfil            func(childComplexity int, userID int) int
+		MyRefrescherCourses func(childComplexity int, userID int) int
+		RefresherCourses    func(childComplexity int, subjectID *int) int
+		Sessions            func(childComplexity int, refresherCourseID int) int
+		VideoUserCheck      func(childComplexity int) int
 	}
 
 	RefresherCourse struct {
 		CreatedAt  func(childComplexity int) int
 		ID         func(childComplexity int) int
 		IsFinished func(childComplexity int) int
+		Price      func(childComplexity int) int
 		UpdatedAt  func(childComplexity int) int
 		Year       func(childComplexity int) int
 	}
 
 	Session struct {
+		ClassPapers func(childComplexity int) int
 		CreatedAt   func(childComplexity int) int
 		Description func(childComplexity int) int
 		ID          func(childComplexity int) int
 		RecordedOn  func(childComplexity int) int
 		Title       func(childComplexity int) int
 		UpdatedAt   func(childComplexity int) int
+		Video       func(childComplexity int) int
 	}
 
 	Token struct {
@@ -90,21 +110,53 @@ type ComplexityRoot struct {
 		UpdatedAt func(childComplexity int) int
 		Username  func(childComplexity int) int
 	}
+
+	Video struct {
+		CreatedAt func(childComplexity int) int
+		Duration  func(childComplexity int) int
+		ID        func(childComplexity int) int
+		IsEncoded func(childComplexity int) int
+		Path      func(childComplexity int) int
+		UUID      func(childComplexity int) int
+		UpdatedAt func(childComplexity int) int
+	}
 }
 
+type ClassPaperResolver interface {
+	CreatedAt(ctx context.Context, obj *models.ClassPaper) (*string, error)
+	UpdatedAt(ctx context.Context, obj *models.ClassPaper) (*string, error)
+}
 type MutationResolver interface {
+	CreateUser(ctx context.Context, input NewUser) (bool, error)
 	RefreshToken(ctx context.Context) (*models.Token, error)
-	CreateUser(ctx context.Context, input NewUser) (string, error)
-	UpdateUser(ctx context.Context, input UpdatedUser) (*models.User, error)
+	UpdateUser(ctx context.Context, input UpdatedUser) (bool, error)
 	PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*models.Session, error)
+	CreateRefresherCourse(ctx context.Context, input NewSessionCourse) (bool, error)
 }
 type QueryResolver interface {
 	Login(ctx context.Context, input UserLogin) (*models.Token, error)
-	OneUserAuth(ctx context.Context) (string, error)
-	MyProfil(ctx context.Context, userID int) (*models.User, error)
-	MyCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error)
 	RefresherCourses(ctx context.Context, subjectID *int) ([]*models.RefresherCourse, error)
+	VideoUserCheck(ctx context.Context) (bool, error)
+	MyProfil(ctx context.Context, userID int) (*models.User, error)
+	MyRefrescherCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error)
 	Sessions(ctx context.Context, refresherCourseID int) ([]*models.Session, error)
+}
+type RefresherCourseResolver interface {
+	CreatedAt(ctx context.Context, obj *models.RefresherCourse) (*string, error)
+	UpdatedAt(ctx context.Context, obj *models.RefresherCourse) (*string, error)
+}
+type SessionResolver interface {
+	RecordedOn(ctx context.Context, obj *models.Session) (*string, error)
+	CreatedAt(ctx context.Context, obj *models.Session) (*string, error)
+	UpdatedAt(ctx context.Context, obj *models.Session) (*string, error)
+}
+type UserResolver interface {
+	CreatedAt(ctx context.Context, obj *models.User) (*string, error)
+	UpdatedAt(ctx context.Context, obj *models.User) (*string, error)
+}
+type VideoResolver interface {
+	CreatedAt(ctx context.Context, obj *models.Video) (*string, error)
+	UpdatedAt(ctx context.Context, obj *models.Video) (*string, error)
 }
 
 type executableSchema struct {
@@ -121,6 +173,53 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 	ec := executionContext{nil, e}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "ClassPaper.createdAt":
+		if e.complexity.ClassPaper.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.ClassPaper.CreatedAt(childComplexity), true
+
+	case "ClassPaper.id":
+		if e.complexity.ClassPaper.ID == nil {
+			break
+		}
+
+		return e.complexity.ClassPaper.ID(childComplexity), true
+
+	case "ClassPaper.path":
+		if e.complexity.ClassPaper.Path == nil {
+			break
+		}
+
+		return e.complexity.ClassPaper.Path(childComplexity), true
+
+	case "ClassPaper.title":
+		if e.complexity.ClassPaper.Title == nil {
+			break
+		}
+
+		return e.complexity.ClassPaper.Title(childComplexity), true
+
+	case "ClassPaper.updatedAt":
+		if e.complexity.ClassPaper.UpdatedAt == nil {
+			break
+		}
+
+		return e.complexity.ClassPaper.UpdatedAt(childComplexity), true
+
+	case "Mutation.createRefresherCourse":
+		if e.complexity.Mutation.CreateRefresherCourse == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createRefresherCourse_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateRefresherCourse(childComplexity, args["input"].(NewSessionCourse)), true
 
 	case "Mutation.createUser":
 		if e.complexity.Mutation.CreateUser == nil {
@@ -177,18 +276,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Login(childComplexity, args["input"].(UserLogin)), true
 
-	case "Query.myCourses":
-		if e.complexity.Query.MyCourses == nil {
-			break
-		}
-
-		args, err := ec.field_Query_myCourses_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.MyCourses(childComplexity, args["userId"].(int)), true
-
 	case "Query.myProfil":
 		if e.complexity.Query.MyProfil == nil {
 			break
@@ -201,12 +288,17 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.MyProfil(childComplexity, args["userId"].(int)), true
 
-	case "Query.oneUserAuth":
-		if e.complexity.Query.OneUserAuth == nil {
+	case "Query.myRefrescherCourses":
+		if e.complexity.Query.MyRefrescherCourses == nil {
 			break
 		}
 
-		return e.complexity.Query.OneUserAuth(childComplexity), true
+		args, err := ec.field_Query_myRefrescherCourses_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.MyRefrescherCourses(childComplexity, args["userId"].(int)), true
 
 	case "Query.refresherCourses":
 		if e.complexity.Query.RefresherCourses == nil {
@@ -232,6 +324,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Sessions(childComplexity, args["refresherCourseId"].(int)), true
 
+	case "Query.videoUserCheck":
+		if e.complexity.Query.VideoUserCheck == nil {
+			break
+		}
+
+		return e.complexity.Query.VideoUserCheck(childComplexity), true
+
 	case "RefresherCourse.createdAt":
 		if e.complexity.RefresherCourse.CreatedAt == nil {
 			break
@@ -253,6 +352,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RefresherCourse.IsFinished(childComplexity), true
 
+	case "RefresherCourse.price":
+		if e.complexity.RefresherCourse.Price == nil {
+			break
+		}
+
+		return e.complexity.RefresherCourse.Price(childComplexity), true
+
 	case "RefresherCourse.updatedAt":
 		if e.complexity.RefresherCourse.UpdatedAt == nil {
 			break
@@ -266,6 +372,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.RefresherCourse.Year(childComplexity), true
+
+	case "Session.classPapers":
+		if e.complexity.Session.ClassPapers == nil {
+			break
+		}
+
+		return e.complexity.Session.ClassPapers(childComplexity), true
 
 	case "Session.createdAt":
 		if e.complexity.Session.CreatedAt == nil {
@@ -308,6 +421,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Session.UpdatedAt(childComplexity), true
+
+	case "Session.video":
+		if e.complexity.Session.Video == nil {
+			break
+		}
+
+		return e.complexity.Session.Video(childComplexity), true
 
 	case "Token.jwt":
 		if e.complexity.Token.JWT == nil {
@@ -365,6 +485,55 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.User.Username(childComplexity), true
 
+	case "Video.createdAt":
+		if e.complexity.Video.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Video.CreatedAt(childComplexity), true
+
+	case "Video.duration":
+		if e.complexity.Video.Duration == nil {
+			break
+		}
+
+		return e.complexity.Video.Duration(childComplexity), true
+
+	case "Video.id":
+		if e.complexity.Video.ID == nil {
+			break
+		}
+
+		return e.complexity.Video.ID(childComplexity), true
+
+	case "Video.isEncoded":
+		if e.complexity.Video.IsEncoded == nil {
+			break
+		}
+
+		return e.complexity.Video.IsEncoded(childComplexity), true
+
+	case "Video.path":
+		if e.complexity.Video.Path == nil {
+			break
+		}
+
+		return e.complexity.Video.Path(childComplexity), true
+
+	case "Video.uuid":
+		if e.complexity.Video.UUID == nil {
+			break
+		}
+
+		return e.complexity.Video.UUID(childComplexity), true
+
+	case "Video.updatedAt":
+		if e.complexity.Video.UpdatedAt == nil {
+			break
+		}
+
+		return e.complexity.Video.UpdatedAt(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -373,7 +542,9 @@ func (e *executableSchema) Query(ctx context.Context, op *ast.OperationDefinitio
 	ec := executionContext{graphql.GetRequestContext(ctx), e}
 
 	buf := ec.RequestMiddleware(ctx, func(ctx context.Context) []byte {
-		data := ec._Query(ctx, op.SelectionSet)
+		data := ec._queryMiddleware(ctx, op, func(ctx context.Context) (interface{}, error) {
+			return ec._Query(ctx, op.SelectionSet), nil
+		})
 		var buf bytes.Buffer
 		data.MarshalGQL(&buf)
 		return buf.Bytes()
@@ -390,7 +561,9 @@ func (e *executableSchema) Mutation(ctx context.Context, op *ast.OperationDefini
 	ec := executionContext{graphql.GetRequestContext(ctx), e}
 
 	buf := ec.RequestMiddleware(ctx, func(ctx context.Context) []byte {
-		data := ec._Mutation(ctx, op.SelectionSet)
+		data := ec._mutationMiddleware(ctx, op, func(ctx context.Context) (interface{}, error) {
+			return ec._Mutation(ctx, op.SelectionSet), nil
+		})
 		var buf bytes.Buffer
 		data.MarshalGQL(&buf)
 		return buf.Bytes()
@@ -431,30 +604,51 @@ var parsedSchema = gqlparser.MustLoadSchema(
 #
 # https://gqlgen.com/getting-started/
 
-type User {
+type ClassPaper {
   id: ID!
-  username: String!
-  email: String!
-  isTeacher: Boolean!
-  createdAt: Time!
-  updatedAt: Time!
+  title: String
+  path: String
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
 type RefresherCourse {
   id: ID!
-  year: String!
-	isFinished: Boolean!
-  createdAt: Time!
-  updatedAt: Time!
+  year: String
+	isFinished: Boolean
+  price: Float @refresherCourseOwner(status: OWNER)
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
-type Session {
-  id: ID
+type Session @hasRole(role: USER){
+  id: ID!
   title: String
   description: String
-  recordedOn: Time
-  createdAt: Time
-  updatedAt: Time
+  recordedOn: Timestamp
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  video: Video
+  classPapers: [ClassPaper]
+}
+
+type User {
+  id: ID!
+  username: String
+  email: String
+  isTeacher: Boolean
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+type Video {
+  id: ID!
+  uuid: String
+  path: String
+  duration: String
+  isEncoded: Boolean
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
 
 type Token {
@@ -463,19 +657,35 @@ type Token {
 }
 
 type Query {
+  ## not logged in
   login(input: UserLogin!): Token!
-  oneUserAuth: Authorized!
-  myProfil(userId: Int!): User!
-  myCourses(userId: Int!): [RefresherCourse!]!
   refresherCourses(subjectId: Int): [RefresherCourse!]!
-  sessions(refresherCourseId: Int!): [Session!]!
+  ## logged in
+  videoUserCheck: Boolean! @hasRole(role: USER)
+  myProfil(userId: Int!): User! @hasRole(role: USER)
+  myRefrescherCourses(userId: Int!): [RefresherCourse!]! @hasRole(role: USER)
+  sessions(refresherCourseId: Int!): [Session!]! @hasRole(role: USER)
 }
 
 type Mutation {
-  refreshToken: Token!
-  createUser(input: NewUser!): Authorized!
-  updateUser(input: UpdatedUser!): User!
-  purchaseRefresherCourse(refresherCourseId: Int!): [Session!]!
+  ## not logged in
+  createUser(input: NewUser!): Boolean!
+  ## logged in as USER
+  refreshToken: Token! @hasRole(role: USER)
+  updateUser(input: UpdatedUser!): Boolean! @hasRole(role: USER)
+  purchaseRefresherCourse(refresherCourseId: Int!): [Session!]! @hasRole(role: USER)
+  ## logged in as TEACHER
+  createRefresherCourse(input: NewSessionCourse!): Boolean! @hasRole(role: TEACHER)
+}
+
+input NewSessionCourse {
+  title: String!
+  type: String!
+  description: String!
+  part: Boolean!
+  recordedOn: Timestamp!
+  videoFile: File!
+  pdfFiles: [File]
 }
 
 input UserLogin {
@@ -495,13 +705,50 @@ input UpdatedUser {
   password: String!
 }
 
-scalar Authorized
-scalar Time`},
+scalar Timestamp
+scalar File
+
+directive @hasRole(role: Role!) on OBJECT | QUERY | MUTATION
+directive @refresherCourseOwner on FIELD_DEFINITION
+
+enum Role {
+  TEACHER
+  USER
+}
+`},
 )
 
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) dir_hasRole_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 Role
+	if tmp, ok := rawArgs["role"]; ok {
+		arg0, err = ec.unmarshalNRole2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋservicesᚋgqlgenᚐRole(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["role"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_createRefresherCourse_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 NewSessionCourse
+	if tmp, ok := rawArgs["input"]; ok {
+		arg0, err = ec.unmarshalNNewSessionCourse2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋservicesᚋgqlgenᚐNewSessionCourse(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
+	return args, nil
+}
 
 func (ec *executionContext) field_Mutation_createUser_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
@@ -573,7 +820,7 @@ func (ec *executionContext) field_Query_login_args(ctx context.Context, rawArgs 
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_myCourses_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Query_myProfil_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 int
@@ -587,7 +834,7 @@ func (ec *executionContext) field_Query_myCourses_args(ctx context.Context, rawA
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_myProfil_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Query_myRefrescherCourses_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 int
@@ -661,11 +908,71 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 
 // region    ************************** directives.gotpl **************************
 
+func (ec *executionContext) _queryMiddleware(ctx context.Context, obj *ast.OperationDefinition, next func(ctx context.Context) (interface{}, error)) graphql.Marshaler {
+
+	for _, d := range obj.Directives {
+		switch d.Name {
+		case "hasRole":
+			rawArgs := d.ArgumentMap(ec.Variables)
+			args, err := ec.dir_hasRole_args(ctx, rawArgs)
+			if err != nil {
+				ec.Error(ctx, err)
+				return graphql.Null
+			}
+			n := next
+			next = func(ctx context.Context) (interface{}, error) {
+				return ec.directives.HasRole(ctx, obj, n, args["role"].(Role))
+			}
+		}
+	}
+	tmp, err := next(ctx)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if data, ok := tmp.(graphql.Marshaler); ok {
+		return data
+	}
+	ec.Errorf(ctx, `unexpected type %T from directive, should be graphql.Marshaler`, tmp)
+	return graphql.Null
+
+}
+
+func (ec *executionContext) _mutationMiddleware(ctx context.Context, obj *ast.OperationDefinition, next func(ctx context.Context) (interface{}, error)) graphql.Marshaler {
+
+	for _, d := range obj.Directives {
+		switch d.Name {
+		case "hasRole":
+			rawArgs := d.ArgumentMap(ec.Variables)
+			args, err := ec.dir_hasRole_args(ctx, rawArgs)
+			if err != nil {
+				ec.Error(ctx, err)
+				return graphql.Null
+			}
+			n := next
+			next = func(ctx context.Context) (interface{}, error) {
+				return ec.directives.HasRole(ctx, obj, n, args["role"].(Role))
+			}
+		}
+	}
+	tmp, err := next(ctx)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if data, ok := tmp.(graphql.Marshaler); ok {
+		return data
+	}
+	ec.Errorf(ctx, `unexpected type %T from directive, should be graphql.Marshaler`, tmp)
+	return graphql.Null
+
+}
+
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
 
-func (ec *executionContext) _Mutation_refreshToken(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _ClassPaper_id(ctx context.Context, field graphql.CollectedField, obj *models.ClassPaper) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
 		if r := recover(); r != nil {
@@ -675,16 +982,16 @@ func (ec *executionContext) _Mutation_refreshToken(ctx context.Context, field gr
 		ec.Tracer.EndFieldExecution(ctx)
 	}()
 	rctx := &graphql.ResolverContext{
-		Object:   "Mutation",
+		Object:   "ClassPaper",
 		Field:    field,
 		Args:     nil,
-		IsMethod: true,
+		IsMethod: false,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().RefreshToken(rctx)
+		return obj.ID, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -696,10 +1003,146 @@ func (ec *executionContext) _Mutation_refreshToken(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*models.Token)
+	res := resTmp.(int)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNToken2ᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐToken(ctx, field.Selections, res)
+	return ec.marshalNID2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ClassPaper_title(ctx context.Context, field graphql.CollectedField, obj *models.ClassPaper) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "ClassPaper",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Title, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ClassPaper_path(ctx context.Context, field graphql.CollectedField, obj *models.ClassPaper) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "ClassPaper",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Path, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ClassPaper_createdAt(ctx context.Context, field graphql.CollectedField, obj *models.ClassPaper) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "ClassPaper",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.ClassPaper().CreatedAt(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ClassPaper_updatedAt(ctx context.Context, field graphql.CollectedField, obj *models.ClassPaper) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "ClassPaper",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.ClassPaper().UpdatedAt(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Mutation_createUser(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -740,10 +1183,47 @@ func (ec *executionContext) _Mutation_createUser(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(string)
+	res := resTmp.(bool)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNAuthorized2string(ctx, field.Selections, res)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_refreshToken(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().RefreshToken(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*models.Token)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNToken2ᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐToken(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Mutation_updateUser(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -784,10 +1264,10 @@ func (ec *executionContext) _Mutation_updateUser(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*models.User)
+	res := resTmp.(bool)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNUser2ᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐUser(ctx, field.Selections, res)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Mutation_purchaseRefresherCourse(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -834,6 +1314,50 @@ func (ec *executionContext) _Mutation_purchaseRefresherCourse(ctx context.Contex
 	return ec.marshalNSession2ᚕᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐSession(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Mutation_createRefresherCourse(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_createRefresherCourse_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().CreateRefresherCourse(rctx, args["input"].(NewSessionCourse))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Query_login(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -878,7 +1402,51 @@ func (ec *executionContext) _Query_login(ctx context.Context, field graphql.Coll
 	return ec.marshalNToken2ᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐToken(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_oneUserAuth(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_refresherCourses(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Query",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_refresherCourses_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().RefresherCourses(rctx, args["subjectId"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*models.RefresherCourse)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNRefresherCourse2ᚕᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐRefresherCourse(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_videoUserCheck(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
 		if r := recover(); r != nil {
@@ -897,7 +1465,7 @@ func (ec *executionContext) _Query_oneUserAuth(ctx context.Context, field graphq
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().OneUserAuth(rctx)
+		return ec.resolvers.Query().VideoUserCheck(rctx)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -909,10 +1477,10 @@ func (ec *executionContext) _Query_oneUserAuth(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.(string)
+	res := resTmp.(bool)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNAuthorized2string(ctx, field.Selections, res)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_myProfil(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -959,7 +1527,7 @@ func (ec *executionContext) _Query_myProfil(ctx context.Context, field graphql.C
 	return ec.marshalNUser2ᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐUser(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_myCourses(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_myRefrescherCourses(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
 		if r := recover(); r != nil {
@@ -976,7 +1544,7 @@ func (ec *executionContext) _Query_myCourses(ctx context.Context, field graphql.
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Query_myCourses_args(ctx, rawArgs)
+	args, err := ec.field_Query_myRefrescherCourses_args(ctx, rawArgs)
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
@@ -985,51 +1553,7 @@ func (ec *executionContext) _Query_myCourses(ctx context.Context, field graphql.
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().MyCourses(rctx, args["userId"].(int))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]*models.RefresherCourse)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNRefresherCourse2ᚕᚖgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐRefresherCourse(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Query_refresherCourses(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-		ec.Tracer.EndFieldExecution(ctx)
-	}()
-	rctx := &graphql.ResolverContext{
-		Object:   "Query",
-		Field:    field,
-		Args:     nil,
-		IsMethod: true,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Query_refresherCourses_args(ctx, rawArgs)
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	rctx.Args = args
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().RefresherCourses(rctx, args["subjectId"].(*int))
+		return ec.resolvers.Query().MyRefrescherCourses(rctx, args["userId"].(int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1229,15 +1753,12 @@ func (ec *executionContext) _RefresherCourse_year(ctx context.Context, field gra
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.(string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNString2string(ctx, field.Selections, res)
+	return ec.marshalOString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _RefresherCourse_isFinished(ctx context.Context, field graphql.CollectedField, obj *models.RefresherCourse) (ret graphql.Marshaler) {
@@ -1266,15 +1787,59 @@ func (ec *executionContext) _RefresherCourse_isFinished(ctx context.Context, fie
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.(bool)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+	return ec.marshalOBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _RefresherCourse_price(ctx context.Context, field graphql.CollectedField, obj *models.RefresherCourse) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "RefresherCourse",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		directive0 := func(rctx context.Context) (interface{}, error) {
+			ctx = rctx // use context from middleware stack in children
+			return obj.Price, nil
+		}
+		directive1 := func(ctx context.Context) (interface{}, error) {
+			return ec.directives.RefresherCourseOwner(ctx, obj, directive0)
+		}
+		tmp, err := directive1(rctx)
+		if err != nil {
+			return nil, err
+		}
+		if data, ok := tmp.(float64); ok {
+			return data, nil
+		}
+		return nil, fmt.Errorf(`unexpected type %T from directive, should be float64`, tmp)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(float64)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOFloat2float64(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _RefresherCourse_createdAt(ctx context.Context, field graphql.CollectedField, obj *models.RefresherCourse) (ret graphql.Marshaler) {
@@ -1290,28 +1855,25 @@ func (ec *executionContext) _RefresherCourse_createdAt(ctx context.Context, fiel
 		Object:   "RefresherCourse",
 		Field:    field,
 		Args:     nil,
-		IsMethod: false,
+		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.CreatedAt, nil
+		return ec.resolvers.RefresherCourse().CreatedAt(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(*string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _RefresherCourse_updatedAt(ctx context.Context, field graphql.CollectedField, obj *models.RefresherCourse) (ret graphql.Marshaler) {
@@ -1327,28 +1889,25 @@ func (ec *executionContext) _RefresherCourse_updatedAt(ctx context.Context, fiel
 		Object:   "RefresherCourse",
 		Field:    field,
 		Args:     nil,
-		IsMethod: false,
+		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.UpdatedAt, nil
+		return ec.resolvers.RefresherCourse().UpdatedAt(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(*string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Session_id(ctx context.Context, field graphql.CollectedField, obj *models.Session) (ret graphql.Marshaler) {
@@ -1377,12 +1936,15 @@ func (ec *executionContext) _Session_id(ctx context.Context, field graphql.Colle
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
 	res := resTmp.(int)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOID2int(ctx, field.Selections, res)
+	return ec.marshalNID2int(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Session_title(ctx context.Context, field graphql.CollectedField, obj *models.Session) (ret graphql.Marshaler) {
@@ -1466,13 +2028,13 @@ func (ec *executionContext) _Session_recordedOn(ctx context.Context, field graph
 		Object:   "Session",
 		Field:    field,
 		Args:     nil,
-		IsMethod: false,
+		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.RecordedOn, nil
+		return ec.resolvers.Session().RecordedOn(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1481,10 +2043,10 @@ func (ec *executionContext) _Session_recordedOn(ctx context.Context, field graph
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(*string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *models.Session) (ret graphql.Marshaler) {
@@ -1500,13 +2062,13 @@ func (ec *executionContext) _Session_createdAt(ctx context.Context, field graphq
 		Object:   "Session",
 		Field:    field,
 		Args:     nil,
-		IsMethod: false,
+		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.CreatedAt, nil
+		return ec.resolvers.Session().CreatedAt(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1515,13 +2077,47 @@ func (ec *executionContext) _Session_createdAt(ctx context.Context, field graphq
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(*string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Session_updatedAt(ctx context.Context, field graphql.CollectedField, obj *models.Session) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Session",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Session().UpdatedAt(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Session_video(ctx context.Context, field graphql.CollectedField, obj *models.Session) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
 		if r := recover(); r != nil {
@@ -1540,7 +2136,7 @@ func (ec *executionContext) _Session_updatedAt(ctx context.Context, field graphq
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.UpdatedAt, nil
+		return obj.Video, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1549,10 +2145,44 @@ func (ec *executionContext) _Session_updatedAt(ctx context.Context, field graphq
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(models.Video)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalOVideo2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐVideo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Session_classPapers(ctx context.Context, field graphql.CollectedField, obj *models.Session) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Session",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ClassPapers, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]models.ClassPaper)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOClassPaper2ᚕgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐClassPaper(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Token_jwt(ctx context.Context, field graphql.CollectedField, obj *models.Token) (ret graphql.Marshaler) {
@@ -1692,15 +2322,12 @@ func (ec *executionContext) _User_username(ctx context.Context, field graphql.Co
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.(string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNString2string(ctx, field.Selections, res)
+	return ec.marshalOString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _User_email(ctx context.Context, field graphql.CollectedField, obj *models.User) (ret graphql.Marshaler) {
@@ -1729,15 +2356,12 @@ func (ec *executionContext) _User_email(ctx context.Context, field graphql.Colle
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.(string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNString2string(ctx, field.Selections, res)
+	return ec.marshalOString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _User_isTeacher(ctx context.Context, field graphql.CollectedField, obj *models.User) (ret graphql.Marshaler) {
@@ -1766,15 +2390,12 @@ func (ec *executionContext) _User_isTeacher(ctx context.Context, field graphql.C
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.(bool)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+	return ec.marshalOBoolean2bool(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _User_createdAt(ctx context.Context, field graphql.CollectedField, obj *models.User) (ret graphql.Marshaler) {
@@ -1790,28 +2411,25 @@ func (ec *executionContext) _User_createdAt(ctx context.Context, field graphql.C
 		Object:   "User",
 		Field:    field,
 		Args:     nil,
-		IsMethod: false,
+		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.CreatedAt, nil
+		return ec.resolvers.User().CreatedAt(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(*string)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _User_updatedAt(ctx context.Context, field graphql.CollectedField, obj *models.User) (ret graphql.Marshaler) {
@@ -1827,13 +2445,47 @@ func (ec *executionContext) _User_updatedAt(ctx context.Context, field graphql.C
 		Object:   "User",
 		Field:    field,
 		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.User().UpdatedAt(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_id(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
 		IsMethod: false,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.UpdatedAt, nil
+		return obj.ID, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1845,10 +2497,214 @@ func (ec *executionContext) _User_updatedAt(ctx context.Context, field graphql.C
 		}
 		return graphql.Null
 	}
-	res := resTmp.(time.Time)
+	res := resTmp.(int)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+	return ec.marshalNID2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_uuid(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.UUID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_path(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Path, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_duration(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Duration, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_isEncoded(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsEncoded, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_createdAt(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Video().CreatedAt(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Video_updatedAt(ctx context.Context, field graphql.CollectedField, obj *models.Video) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Video",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Video().UpdatedAt(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOTimestamp2ᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -3002,6 +3858,60 @@ func (ec *executionContext) ___Type_ofType(ctx context.Context, field graphql.Co
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputNewSessionCourse(ctx context.Context, obj interface{}) (NewSessionCourse, error) {
+	var it NewSessionCourse
+	var asMap = obj.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "title":
+			var err error
+			it.Title, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "type":
+			var err error
+			it.Type, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "description":
+			var err error
+			it.Description, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "part":
+			var err error
+			it.Part, err = ec.unmarshalNBoolean2bool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "recordedOn":
+			var err error
+			it.RecordedOn, err = ec.unmarshalNTimestamp2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "videoFile":
+			var err error
+			it.VideoFile, err = ec.unmarshalNFile2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "pdfFiles":
+			var err error
+			it.PdfFiles, err = ec.unmarshalOFile2ᚕᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj interface{}) (NewUser, error) {
 	var it NewUser
 	var asMap = obj.(map[string]interface{})
@@ -3094,6 +4004,59 @@ func (ec *executionContext) unmarshalInputUserLogin(ctx context.Context, obj int
 
 // region    **************************** object.gotpl ****************************
 
+var classPaperImplementors = []string{"ClassPaper"}
+
+func (ec *executionContext) _ClassPaper(ctx context.Context, sel ast.SelectionSet, obj *models.ClassPaper) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.RequestContext, sel, classPaperImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ClassPaper")
+		case "id":
+			out.Values[i] = ec._ClassPaper_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
+		case "title":
+			out.Values[i] = ec._ClassPaper_title(ctx, field, obj)
+		case "path":
+			out.Values[i] = ec._ClassPaper_path(ctx, field, obj)
+		case "createdAt":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._ClassPaper_createdAt(ctx, field, obj)
+				return res
+			})
+		case "updatedAt":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._ClassPaper_updatedAt(ctx, field, obj)
+				return res
+			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -3109,13 +4072,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
-		case "refreshToken":
-			out.Values[i] = ec._Mutation_refreshToken(ctx, field)
+		case "createUser":
+			out.Values[i] = ec._Mutation_createUser(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
-		case "createUser":
-			out.Values[i] = ec._Mutation_createUser(ctx, field)
+		case "refreshToken":
+			out.Values[i] = ec._Mutation_refreshToken(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
@@ -3126,6 +4089,11 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			}
 		case "purchaseRefresherCourse":
 			out.Values[i] = ec._Mutation_purchaseRefresherCourse(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "createRefresherCourse":
+			out.Values[i] = ec._Mutation_createRefresherCourse(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
@@ -3169,7 +4137,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				}
 				return res
 			})
-		case "oneUserAuth":
+		case "refresherCourses":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
 				defer func() {
@@ -3177,7 +4145,21 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_oneUserAuth(ctx, field)
+				res = ec._Query_refresherCourses(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
+		case "videoUserCheck":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_videoUserCheck(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}
@@ -3197,7 +4179,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				}
 				return res
 			})
-		case "myCourses":
+		case "myRefrescherCourses":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
 				defer func() {
@@ -3205,21 +4187,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_myCourses(ctx, field)
-				if res == graphql.Null {
-					atomic.AddUint32(&invalids, 1)
-				}
-				return res
-			})
-		case "refresherCourses":
-			field := field
-			out.Concurrently(i, func() (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_refresherCourses(ctx, field)
+				res = ec._Query_myRefrescherCourses(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}
@@ -3268,28 +4236,36 @@ func (ec *executionContext) _RefresherCourse(ctx context.Context, sel ast.Select
 		case "id":
 			out.Values[i] = ec._RefresherCourse_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "year":
 			out.Values[i] = ec._RefresherCourse_year(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
 		case "isFinished":
 			out.Values[i] = ec._RefresherCourse_isFinished(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
+		case "price":
+			out.Values[i] = ec._RefresherCourse_price(ctx, field, obj)
 		case "createdAt":
-			out.Values[i] = ec._RefresherCourse_createdAt(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._RefresherCourse_createdAt(ctx, field, obj)
+				return res
+			})
 		case "updatedAt":
-			out.Values[i] = ec._RefresherCourse_updatedAt(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._RefresherCourse_updatedAt(ctx, field, obj)
+				return res
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3314,16 +4290,50 @@ func (ec *executionContext) _Session(ctx context.Context, sel ast.SelectionSet, 
 			out.Values[i] = graphql.MarshalString("Session")
 		case "id":
 			out.Values[i] = ec._Session_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "title":
 			out.Values[i] = ec._Session_title(ctx, field, obj)
 		case "description":
 			out.Values[i] = ec._Session_description(ctx, field, obj)
 		case "recordedOn":
-			out.Values[i] = ec._Session_recordedOn(ctx, field, obj)
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Session_recordedOn(ctx, field, obj)
+				return res
+			})
 		case "createdAt":
-			out.Values[i] = ec._Session_createdAt(ctx, field, obj)
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Session_createdAt(ctx, field, obj)
+				return res
+			})
 		case "updatedAt":
-			out.Values[i] = ec._Session_updatedAt(ctx, field, obj)
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Session_updatedAt(ctx, field, obj)
+				return res
+			})
+		case "video":
+			out.Values[i] = ec._Session_video(ctx, field, obj)
+		case "classPapers":
+			out.Values[i] = ec._Session_classPapers(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3381,33 +4391,93 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 		case "id":
 			out.Values[i] = ec._User_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "username":
 			out.Values[i] = ec._User_username(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
 		case "email":
 			out.Values[i] = ec._User_email(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
 		case "isTeacher":
 			out.Values[i] = ec._User_isTeacher(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
 		case "createdAt":
-			out.Values[i] = ec._User_createdAt(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_createdAt(ctx, field, obj)
+				return res
+			})
 		case "updatedAt":
-			out.Values[i] = ec._User_updatedAt(ctx, field, obj)
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_updatedAt(ctx, field, obj)
+				return res
+			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var videoImplementors = []string{"Video"}
+
+func (ec *executionContext) _Video(ctx context.Context, sel ast.SelectionSet, obj *models.Video) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.RequestContext, sel, videoImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Video")
+		case "id":
+			out.Values[i] = ec._Video_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
+		case "uuid":
+			out.Values[i] = ec._Video_uuid(ctx, field, obj)
+		case "path":
+			out.Values[i] = ec._Video_path(ctx, field, obj)
+		case "duration":
+			out.Values[i] = ec._Video_duration(ctx, field, obj)
+		case "isEncoded":
+			out.Values[i] = ec._Video_isEncoded(ctx, field, obj)
+		case "createdAt":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Video_createdAt(ctx, field, obj)
+				return res
+			})
+		case "updatedAt":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Video_updatedAt(ctx, field, obj)
+				return res
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3664,12 +4734,12 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
-func (ec *executionContext) unmarshalNAuthorized2string(ctx context.Context, v interface{}) (string, error) {
-	return graphql.UnmarshalString(v)
+func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v interface{}) (bool, error) {
+	return graphql.UnmarshalBoolean(v)
 }
 
-func (ec *executionContext) marshalNAuthorized2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
-	res := graphql.MarshalString(v)
+func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.SelectionSet, v bool) graphql.Marshaler {
+	res := graphql.MarshalBoolean(v)
 	if res == graphql.Null {
 		if !ec.HasError(graphql.GetResolverContext(ctx)) {
 			ec.Errorf(ctx, "must not be null")
@@ -3678,12 +4748,12 @@ func (ec *executionContext) marshalNAuthorized2string(ctx context.Context, sel a
 	return res
 }
 
-func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v interface{}) (bool, error) {
-	return graphql.UnmarshalBoolean(v)
+func (ec *executionContext) unmarshalNFile2string(ctx context.Context, v interface{}) (string, error) {
+	return graphql.UnmarshalString(v)
 }
 
-func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.SelectionSet, v bool) graphql.Marshaler {
-	res := graphql.MarshalBoolean(v)
+func (ec *executionContext) marshalNFile2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
+	res := graphql.MarshalString(v)
 	if res == graphql.Null {
 		if !ec.HasError(graphql.GetResolverContext(ctx)) {
 			ec.Errorf(ctx, "must not be null")
@@ -3718,6 +4788,10 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNNewSessionCourse2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋservicesᚋgqlgenᚐNewSessionCourse(ctx context.Context, v interface{}) (NewSessionCourse, error) {
+	return ec.unmarshalInputNewSessionCourse(ctx, v)
 }
 
 func (ec *executionContext) unmarshalNNewUser2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋservicesᚋgqlgenᚐNewUser(ctx context.Context, v interface{}) (NewUser, error) {
@@ -3773,6 +4847,15 @@ func (ec *executionContext) marshalNRefresherCourse2ᚖgithubᚗcomᚋnassimelho
 		return graphql.Null
 	}
 	return ec._RefresherCourse(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNRole2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋservicesᚋgqlgenᚐRole(ctx context.Context, v interface{}) (Role, error) {
+	var res Role
+	return res, res.UnmarshalGQL(v)
+}
+
+func (ec *executionContext) marshalNRole2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋservicesᚋgqlgenᚐRole(ctx context.Context, sel ast.SelectionSet, v Role) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalNSession2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐSession(ctx context.Context, sel ast.SelectionSet, v models.Session) graphql.Marshaler {
@@ -3840,12 +4923,12 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 	return res
 }
 
-func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v interface{}) (time.Time, error) {
-	return graphql.UnmarshalTime(v)
+func (ec *executionContext) unmarshalNTimestamp2string(ctx context.Context, v interface{}) (string, error) {
+	return graphql.UnmarshalString(v)
 }
 
-func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel ast.SelectionSet, v time.Time) graphql.Marshaler {
-	res := graphql.MarshalTime(v)
+func (ec *executionContext) marshalNTimestamp2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
+	res := graphql.MarshalString(v)
 	if res == graphql.Null {
 		if !ec.HasError(graphql.GetResolverContext(ctx)) {
 			ec.Errorf(ctx, "must not be null")
@@ -4139,12 +5222,111 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return ec.marshalOBoolean2bool(ctx, sel, *v)
 }
 
-func (ec *executionContext) unmarshalOID2int(ctx context.Context, v interface{}) (int, error) {
-	return graphql.UnmarshalIntID(v)
+func (ec *executionContext) marshalOClassPaper2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐClassPaper(ctx context.Context, sel ast.SelectionSet, v models.ClassPaper) graphql.Marshaler {
+	return ec._ClassPaper(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalOID2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
-	return graphql.MarshalIntID(v)
+func (ec *executionContext) marshalOClassPaper2ᚕgithubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐClassPaper(ctx context.Context, sel ast.SelectionSet, v []models.ClassPaper) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		rctx := &graphql.ResolverContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithResolverContext(ctx, rctx)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOClassPaper2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐClassPaper(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+	return ret
+}
+
+func (ec *executionContext) unmarshalOFile2string(ctx context.Context, v interface{}) (string, error) {
+	return graphql.UnmarshalString(v)
+}
+
+func (ec *executionContext) marshalOFile2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
+	return graphql.MarshalString(v)
+}
+
+func (ec *executionContext) unmarshalOFile2ᚕᚖstring(ctx context.Context, v interface{}) ([]*string, error) {
+	var vSlice []interface{}
+	if v != nil {
+		if tmp1, ok := v.([]interface{}); ok {
+			vSlice = tmp1
+		} else {
+			vSlice = []interface{}{v}
+		}
+	}
+	var err error
+	res := make([]*string, len(vSlice))
+	for i := range vSlice {
+		res[i], err = ec.unmarshalOFile2ᚖstring(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOFile2ᚕᚖstring(ctx context.Context, sel ast.SelectionSet, v []*string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalOFile2ᚖstring(ctx, sel, v[i])
+	}
+
+	return ret
+}
+
+func (ec *executionContext) unmarshalOFile2ᚖstring(ctx context.Context, v interface{}) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalOFile2string(ctx, v)
+	return &res, err
+}
+
+func (ec *executionContext) marshalOFile2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec.marshalOFile2string(ctx, sel, *v)
+}
+
+func (ec *executionContext) unmarshalOFloat2float64(ctx context.Context, v interface{}) (float64, error) {
+	return graphql.UnmarshalFloat(v)
+}
+
+func (ec *executionContext) marshalOFloat2float64(ctx context.Context, sel ast.SelectionSet, v float64) graphql.Marshaler {
+	return graphql.MarshalFloat(v)
 }
 
 func (ec *executionContext) unmarshalOInt2int(ctx context.Context, v interface{}) (int, error) {
@@ -4193,12 +5375,31 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return ec.marshalOString2string(ctx, sel, *v)
 }
 
-func (ec *executionContext) unmarshalOTime2timeᚐTime(ctx context.Context, v interface{}) (time.Time, error) {
-	return graphql.UnmarshalTime(v)
+func (ec *executionContext) unmarshalOTimestamp2string(ctx context.Context, v interface{}) (string, error) {
+	return graphql.UnmarshalString(v)
 }
 
-func (ec *executionContext) marshalOTime2timeᚐTime(ctx context.Context, sel ast.SelectionSet, v time.Time) graphql.Marshaler {
-	return graphql.MarshalTime(v)
+func (ec *executionContext) marshalOTimestamp2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
+	return graphql.MarshalString(v)
+}
+
+func (ec *executionContext) unmarshalOTimestamp2ᚖstring(ctx context.Context, v interface{}) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalOTimestamp2string(ctx, v)
+	return &res, err
+}
+
+func (ec *executionContext) marshalOTimestamp2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec.marshalOTimestamp2string(ctx, sel, *v)
+}
+
+func (ec *executionContext) marshalOVideo2githubᚗcomᚋnassimelhormiᚋecrpeᚑapiᚋmodelsᚐVideo(ctx context.Context, sel ast.SelectionSet, v models.Video) graphql.Marshaler {
+	return ec._Video(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValue(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {
