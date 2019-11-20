@@ -15,20 +15,12 @@ func HasRole(ctx context.Context, obj interface{}, next graphql.Resolver, role g
 	case gqlgen.RoleTeacher:
 		user := interceptors.ForUserContext(ctx)
 		if !user.IsAuth {
-			return "", gqlerror.Errorf("%w", user.Error)
+			return nil, gqlerror.Errorf("%w", user.Error)
 		}
-
-		return nil, nil
 	case gqlgen.RoleUser:
-		user := interceptors.ForUserContext(ctx)
-		if !user.IsAuth {
-			return "", gqlerror.Errorf("%w", user.Error)
+		if user := interceptors.ForUserContext(ctx); !user.IsAuth {
+			return nil, gqlerror.Errorf("%w", user.Error)
 		}
 	}
-	return next(ctx)
-}
-
-// RefresherCourseOwner func
-func RefresherCourseOwner(ctx context.Context, obj interface{}, next graphql.Resolver) (interface{}, error) {
 	return next(ctx)
 }

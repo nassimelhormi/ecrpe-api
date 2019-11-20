@@ -6,16 +6,26 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
+
+	"github.com/99designs/gqlgen/graphql"
+	"github.com/nassimelhormi/ecrpe-api/models"
 )
 
+type DocUploadFile struct {
+	Title string         `json:"title"`
+	File  graphql.Upload `json:"file"`
+}
+
 type NewSessionCourse struct {
-	Title       string    `json:"title"`
-	Type        string    `json:"type"`
-	Description string    `json:"description"`
-	Part        bool      `json:"part"`
-	RecordedOn  string    `json:"recordedOn"`
-	VideoFile   string    `json:"videoFile"`
-	PdfFiles    []*string `json:"pdfFiles"`
+	RefresherCourseID int              `json:"refresherCourseId"`
+	Title             string           `json:"title"`
+	Type              string           `json:"type"`
+	Description       string           `json:"description"`
+	Part              int              `json:"part"`
+	RecordedOn        time.Time        `json:"recordedOn"`
+	VideoFile         graphql.Upload   `json:"videoFile"`
+	DocFiles          []*DocUploadFile `json:"docFiles"`
 }
 
 type NewUser struct {
@@ -24,10 +34,51 @@ type NewUser struct {
 	Password string `json:"password"`
 }
 
+type RefresherCourse struct {
+	ID         int        `json:"id"`
+	Year       *string    `json:"year"`
+	IsFinished *bool      `json:"isFinished"`
+	Price      *float64   `json:"price"`
+	CreatedAt  *time.Time `json:"createdAt"`
+	UpdatedAt  *time.Time `json:"updatedAt"`
+	Subject    *Subject   `json:"subject"`
+	Sessions   []*Session `json:"sessions"`
+}
+
+type Session struct {
+	ID          int                  `json:"id"`
+	Title       *string              `json:"title"`
+	Description *string              `json:"description"`
+	RecordedOn  *time.Time           `json:"recordedOn"`
+	CreatedAt   *time.Time           `json:"createdAt"`
+	UpdatedAt   *time.Time           `json:"updatedAt"`
+	Video       *models.Video        `json:"video"`
+	ClassPapers []*models.ClassPaper `json:"classPapers"`
+}
+
+type Subject struct {
+	ID               int                `json:"id"`
+	Name             *string            `json:"name"`
+	Active           *bool              `json:"active"`
+	CreatedAt        *time.Time         `json:"createdAt"`
+	UpdatedAt        *time.Time         `json:"updatedAt"`
+	RefresherCourses []*RefresherCourse `json:"refresherCourses"`
+}
+
 type UpdatedUser struct {
 	Username *string `json:"username"`
 	Email    *string `json:"email"`
 	Password string  `json:"password"`
+}
+
+type User struct {
+	ID               int                `json:"id"`
+	Username         *string            `json:"username"`
+	Email            *string            `json:"email"`
+	IsTeacher        *bool              `json:"isTeacher"`
+	CreatedAt        *time.Time         `json:"createdAt"`
+	UpdatedAt        *time.Time         `json:"updatedAt"`
+	RefresherCourses []*RefresherCourse `json:"refresherCourses"`
 }
 
 type UserLogin struct {

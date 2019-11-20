@@ -2,51 +2,43 @@
 #
 # https://gqlgen.com/getting-started/
 
-type ClassPaper {
+type ClassPaper @hasRole(role: USER){
   id: ID!
   title: String
   path: String
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  createdAt: Time
+  updatedAt: Time
 }
 
 type RefresherCourse {
   id: ID!
   year: String
 	isFinished: Boolean
-  price: Float @refresherCourseOwner(status: OWNER)
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  price: Float
+  createdAt: Time
+  updatedAt: Time
+  subject: Subject
+  sessions: [Session] @hasRole(role: USER)
 }
 
 type Session @hasRole(role: USER){
   id: ID!
   title: String
   description: String
-  recordedOn: Timestamp
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  recordedOn: Time
+  createdAt: Time
+  updatedAt: Time
   video: Video
   classPapers: [ClassPaper]
 }
 
-type User {
+type Subject {
   id: ID!
-  username: String
-  email: String
-  isTeacher: Boolean
-  createdAt: Timestamp
-  updatedAt: Timestamp
-}
-
-type Video {
-  id: ID!
-  uuid: String
-  path: String
-  duration: String
-  isEncoded: Boolean
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  name: String
+  active: Boolean
+	createdAt: Time
+	updatedAt: Time
+  refresherCourses: [RefresherCourse]
 }
 
 type Token {
@@ -54,15 +46,37 @@ type Token {
   refreshToken: String!
 }
 
+type User {
+  id: ID!
+  username: String
+  email: String
+  isTeacher: Boolean
+  createdAt: Time
+  updatedAt: Time
+  refresherCourses: [RefresherCourse] @hasRole(role: USER)
+}
+
+type Video @hasRole(role: USER){
+  id: ID!
+  uuid: String
+  path: String
+  duration: String
+  isEncoded: Boolean
+  createdAt: Time
+  updatedAt: Time
+}
+
 type Query {
   ## not logged in
   login(input: UserLogin!): Token!
-  refresherCourses(subjectId: Int): [RefresherCourse!]!
+  "don't display price if already bought"
+  getRefresherCourses(subjectId: Int): [RefresherCourse!]!
+  getRefresherCourse(refresherCourseId: Int!): RefresherCourse!
   ## logged in
   videoUserCheck: Boolean! @hasRole(role: USER)
   myProfil(userId: Int!): User! @hasRole(role: USER)
   myRefrescherCourses(userId: Int!): [RefresherCourse!]! @hasRole(role: USER)
-  sessions(refresherCourseId: Int!): [Session!]! @hasRole(role: USER)
+  getSessionCourse(sessionId: Int!): Session! @hasRole(role: USER)
 }
 
 type Mutation {
@@ -77,13 +91,19 @@ type Mutation {
 }
 
 input NewSessionCourse {
+  refresherCourseId: Int!
   title: String!
   type: String!
   description: String!
-  part: Boolean!
-  recordedOn: Timestamp!
-  videoFile: File!
-  pdfFiles: [File]
+  part: Int!
+  recordedOn: Time!
+  videoFile: Upload!
+  docFiles: [DocUploadFile]
+}
+
+input DocUploadFile {
+  title: String!
+  file: Upload!
 }
 
 input UserLogin {
@@ -103,11 +123,10 @@ input UpdatedUser {
   password: String!
 }
 
-scalar Timestamp
-scalar File
+scalar Time
+scalar Upload
 
 directive @hasRole(role: Role!) on OBJECT | QUERY | MUTATION
-directive @refresherCourseOwner on FIELD_DEFINITION
 
 enum Role {
   TEACHER

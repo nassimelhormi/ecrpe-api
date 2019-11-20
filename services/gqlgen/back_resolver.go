@@ -31,12 +31,6 @@ func (r *Resolver) Mutation() MutationResolver {
 func (r *Resolver) Query() QueryResolver {
 	return &queryResolver{r}
 }
-func (r *Resolver) RefresherCourse() RefresherCourseResolver {
-	return &refresherCourseResolver{r}
-}
-func (r *Resolver) Session() SessionResolver {
-	return &sessionResolver{r}
-}
 
 type mutationResolver struct{ *Resolver }
 
@@ -124,8 +118,47 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, input UpdatedUser) (b
 	}
 	return true, nil
 }
-func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*Session, error) {
+func (r *mutationResolver) PurchaseRefresherCourse(ctx context.Context, refresherCourseID int) ([]*models.Session, error) {
+
 	sessions := make([]*models.Session, 0)
+	// 	** if not logged with no subject_id **
+	// 	SELECT * FROM refresher_courses
+	//
+	//	** if not logged with subject_id **
+		// 	SELECT *
+		// 	FROM refresher_courses AS rc
+		// 	JOIN subjects_refresher_courses AS src
+		//		ON rc.id = src.refresher_course_id
+		//	JOIN subjects AS s
+		//		ON s.id = src.subject_id
+		// 	WHERE s.id = ?
+	//
+	// 	** if logged with subject_id **
+	// 	SELECT id, year, is_finished, created_at, updated_at,
+	//  IF(id
+	//			NOT IN(
+	//				SELECT refresher_course_id FROM users_refresher_courses
+	//				WHERE user_id = ?
+	//			), price
+	//  )
+	// 	FROM refresher_courses AS rc
+	// 	JOIN subjects_refresher_courses AS src
+	//		ON rc.id = src.refresher_course_id
+	//	JOIN subjects AS s
+	//		ON s.id = src.subject_id
+	// 	WHERE s.id = ?
+	//
+	// 	** logged without subject_id **
+	// 	SELECT id, year, is_finished, created_at, updated_at,
+	//  IF(id
+	//			NOT IN(
+	//				SELECT refresher_course_id FROM users_refresher_courses
+	//				WHERE user_id = ?
+	//			), price
+	//  )
+	// 	FROM refresher_courses
+
+	// paypal system
 	return sessions, nil
 }
 func (r *mutationResolver) CreateRefresherCourse(ctx context.Context, input NewSessionCourse) (bool, error) {
@@ -208,80 +241,31 @@ func (r *queryResolver) Login(ctx context.Context, input UserLogin) (*models.Tok
 	}
 	return &tokens, nil
 }
-func (r *queryResolver) GetRefresherCourses(ctx context.Context, subjectID *int) ([]*RefresherCourse, error) {
+func (r *queryResolver) RefresherCourses(ctx context.Context, subjectID *int) ([]*models.RefresherCourse, error) {
 	refCourses := make([]*models.RefresherCourse, 0)
-	if subjectID == nil && {
-
+	if subjectID == nil {
+		if err := r.DB.Select(refCourses, "SELECT * FROM refresher_courses"); err != nil {
+			return refCourses, gqlerror.Errorf("cannot retrieve refresher courses, try again")
+		}
+		return refCourses, nil
 	}
-	if err := r.DB.Select(&refCourse, `
-	`, sub); err != nil {
-		return &models.RefresherCourse{}, gqlerror.Errorf("Cannot refresher course")
+	if err := r.DB.Select(refCourses, `
+		SELECT * FROM refresher_courses as rc
+		JOIN subjects_refresher_courses as src ON rc.id = src.refresher_course_id
+		JOIN subjects as s ON src.subject_id = s.id WHERE s.id = ?
+	`, subjectID); err != nil {
+		return refCourses, gqlerror.Errorf("cannot retrieve refresher courses from your subject choice")
 	}
 	return refCourses, nil
 }
-func (r *queryResolver) GetRefresherCourse(ctx context.Context, refresherCourseID int) (*RefresherCourse, error) {
-	refCourse := models.RefresherCourse{}
-	if user := interceptors.ForUserContext(ctx); user.IsAuth {
-		if subjectID == nil {
-			if err := r.DB.Get(&refCourse, `
-				SELECT id, year, is_finished, created_at, updated_at,
-					IF(id
-						NOT IN(
-							SELECT refresher_course_id FROM users_refresher_courses
-							WHERE user_id = ?
-						), price
-					)
-				FROM refresher_courses`
-			, user.UserID); err != nil {
-				return &models.RefresherCourse{}, gqlerror.Errorf("Cannot retrieve refresher course")
-			}
-			return refCourses, nil
-		}
-		if err := r.DB.Get(&refCourse, `
-			SELECT id, year, is_finished, created_at, updated_at,
-				IF(id
-					NOT IN(
-						SELECT refresher_course_id FROM users_refresher_courses
-						WHERE user_id = ?
-					), price
-				)
-			FROM refresher_courses`
-		, user.UserID); err != nil {
-			return &models.RefresherCourse{}, gqlerror.Errorf("Cannot retrieve refresher course")
-		}
-		return refCourses, nil
+func (r *queryResolver) RefresherCourse(ctx context.Context, refresherCourseID int) (*models.RefresherCourse, error) {
+	refresherCourse := models.RefresherCourse{}
+	if err := r.DB.Get(&refresherCourse, `
+		SELECT * FROM refresher_courses
+	`, refresherCourseID); err != nil {
+		return &models.RefresherCourse{}, gqlerror.Errorf("refresherCourse")
 	}
-	if err := r.DB.Get(&refCourse, `
-			SELECT id, year, is_finished, created_at, updated_at,
-				IF(id
-					NOT IN(
-						SELECT refresher_course_id FROM users_refresher_courses
-						WHERE user_id = ?
-					), price
-	  		)
-		 	FROM refresher_courses AS rc
-			JOIN subjects_refresher_courses AS src ON rc.id = src.refresher_course_id
-			JOIN subjects AS s ON s.id = src.subject_id
-			WHERE s.id = ?
-		`, user.UserID, subjectID); err != nil {
-			return &models.RefresherCourse{}, gqlerror.Errorf("Cannot retrieve refresher course")
-		}
-		return refCourses, nil
-	}
-	if subjectID == nil {
-		if err := r.DB.Get(&refCourse, "SELECT * FROM refresher_courses"); err != nil {
-			return &models.RefresherCourse{}, gqlerror.Errorf("Cannot retrieve refresher course")
-		}
-		return refCourses, nil
-	}
-	if err := r.DB.Get(&refCourse, `
-		SELECT * FROM refresher_courses AS rc
-		JOIN subjects_refresher_courses AS src ON rc.id = src.refresher_course_id
-		JOIN subjects AS s ON s.id = src.subject_id WHERE s.id = ?
-	`, subjectID); err != nil {
-		return &models.RefresherCourse{}, gqlerror.Errorf("Cannot retrieve refresher course")
-	}
-	return refCourse, nil
+	return &refresherCourse, nil
 }
 func (r *queryResolver) VideoUserCheck(ctx context.Context) (bool, error) {
 	user := interceptors.ForUserContext(ctx)
@@ -301,69 +285,25 @@ func (r *queryResolver) VideoUserCheck(ctx context.Context) (bool, error) {
 	r.IPAddressCache.AddIP(string(user.UserID), string(user.Username))
 	return true, nil
 }
-func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*User, error) {
+func (r *queryResolver) MyProfil(ctx context.Context, userID int) (*models.User, error) {
 	user := models.User{}
 	if err := r.DB.Get(&user, "SELECT id, username, email, is_teacher, created_at, updated_at FROM users WHERE id = ?", userID); err != nil {
 		return &models.User{}, gqlerror.Errorf("Cannot access your profil")
 	}
 	return &user, nil
 }
-func (r *queryResolver) MyRefrescherCourses(ctx context.Context, userID int) ([]*RefresherCourse, error) {
+func (r *queryResolver) MyRefrescherCourses(ctx context.Context, userID int) ([]*models.RefresherCourse, error) {
 	refCourses := make([]*models.RefresherCourse, 0)
 	// add checking paypal payment
 	if err := r.DB.Select(refCourses, `
 		SELECT * FROM refresher_courses
-		WHERE id IN(
-			SELECT refresher_course_id FROM users_refresher_courses
-			WHERE user_id = ?
-		)
+		JOIN users_refresher_courses ON refresher_courses.id = users_refresher_courses.refresher_course_id
+		JOIN users ON users_refresher_courses.user_id = ?
 	`, userID); err != nil {
 		return refCourses, gqlerror.Errorf("cannot retrieve your refresher courses purchased")
 	}
 	return refCourses, nil
 }
-func (r *queryResolver) GetSessionCourse(ctx context.Context, sessionID int) (*Session, error) {
-	session := models.Session{}
-	if err := r.DB.Get(&session, `
-		SELECT * FROM sessions WHERE id = ?
-	`, sessionID); err != nil {
-		return &models.Session{}, gqlerror.Errorf("Cannot retrieve session")
-	}
-	return &session, nil
-}
-
-type refresherCourseResolver struct{ *Resolver }
-
-func (r *refresherCourseResolver) Subject(ctx context.Context, obj *RefresherCourse) (*Subject, error) {
-	subject := models.Subject{}
-	if err := r.DB.Get(&subject, `
-		SELECT * FROM subjects as s
-		JOIN subjects_refresher_courses AS src
-			ON s.id = src.subject_id
-		JOIN refresher_courses AS rc
-			ON rc.id = src.refresher_course_id
-		WHERE rc.id = ?
-	`, obj.ID); err != nil {
-		return &models.Subject{}, gqlerror.Errorf("cannot retrieve subject")
-	}
-	return &subject, nil
-}
-func (r *refresherCourseResolver) Sessions(ctx context.Context, obj *RefresherCourse) ([]*Session, error) {
-	sessions := make([]*models.Session, 0)
-	if err := r.DB.Select(&sessions, `
-		SELECT * FROM sessions WHERE refresher_course_id = ?
-	`, obj.ID); err != nil {
-		return sessions, gqlerror.Errorf("Cannot retrieve sessions")
-	}
-	return sessions, nil
-}
-
-type sessionResolver struct{ *Resolver }
-
-func (r *sessionResolver) Video(ctx context.Context, obj *Session) (*models.Video, error) {
-	video := models.Video{}
-	if err := r.DB.Get(&video, "SELECT * FROM videos WHERE session_id = ?", obj.ID); err != nil {
-		return &models.Video{}, gqlerror.Errorf("cannot retrieve video")
-	}
-	return &video, nil
+func (r *queryResolver) SessionCourse(ctx context.Context, sessionID int) (*models.Session, error) {
+	panic("not implemented")
 }

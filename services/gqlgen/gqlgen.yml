@@ -9,18 +9,31 @@ models:
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.IntID
+      - github.com/99designs/gqlgen/graphql.ID
   ClassPaper:
     model: github.com/nassimelhormi/ecrpe-api/models.ClassPaper
   RefresherCourse:
-    model: github.com/nassimelhormi/ecrpe-api/models.RefresherCourse
+    fields:
+      subject:
+        resolver: true
+      sessions:
+        resolver: true
   Session:
-    model: github.com/nassimelhormi/ecrpe-api/models.Session
+    fields:
+      video:
+        resolver: true
+      class_papers:
+        resolver: true
   Subject:
-    model: github.com/nassimelhormi/ecrpe-api/models.Subject
+    fields:
+      refresher_courses:
+        resolver: true
   Token:
     model: github.com/nassimelhormi/ecrpe-api/models.Token
   User:
-    model: github.com/nassimelhormi/ecrpe-api/models.User
+    fields:
+      refresher_courses:
+        resolver: true
   Video:
     model: github.com/nassimelhormi/ecrpe-api/models.Video
 

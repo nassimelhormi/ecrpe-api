@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gbrlsnchs/jwt"
+	"github.com/nassimelhormi/ecrpe-api/services/gqlgen/utils"
 )
 
 // JWTContextKey struct
@@ -20,6 +21,7 @@ var userJWTCtxKey = &JWTContextKey{"userJWT"}
 // User struct
 type User struct {
 	Username string
+	UserID   int
 	IsAuth   bool
 	Error    error
 }
@@ -38,10 +40,10 @@ func JWTCheck(secretKey string) func(http.Handler) http.Handler {
 				return
 			}
 
-			pl := jwt.Payload{}
+			pl := utils.CustomPayload{}
 			expValidator := jwt.ExpirationTimeValidator(time.Now())
 			audValidator := jwt.AudienceValidator(jwt.Audience{"https://ecrpe.fr"})
-			validatePayload := jwt.ValidatePayload(&pl, audValidator, expValidator)
+			validatePayload := jwt.ValidatePayload(&pl.Payload, audValidator, expValidator)
 			signature := jwt.NewHS256([]byte(secretKey))
 
 			// Split bearer from jwt
@@ -53,7 +55,7 @@ func JWTCheck(secretKey string) func(http.Handler) http.Handler {
 				return
 			}
 
-			user := User{Username: pl.Subject, IsAuth: true}
+			user := User{Username: pl.Username, UserID: pl.UserID, IsAuth: true}
 			ctx := context.WithValue(r.Context(), userJWTCtxKey, user)
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)

@@ -71,10 +71,10 @@ func main() {
 		gqlgen.NewExecutableSchema(
 			gqlgen.Config{
 				Resolvers: &gqlgen.Resolver{
-					// 	DB:              db,
-					// 	SecreyKey:       secretKey,
-					// 	IPAddressCache:  ipAddressCache,
-					// 	VideoEncodingCh: videoEncodingCh,
+					DB:              db,
+					SecreyKey:       secretKey,
+					IPAddressCache:  ipAddressCache,
+					VideoEncodingCh: videoEncodingCh,
 				},
 				Directives: gqlgen.DirectiveRoot{
 					HasRole:              directives.HasRole,
